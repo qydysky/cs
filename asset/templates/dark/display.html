@@ -63,6 +63,7 @@
 		.file-header small a { color: #808080; font-size: 13px; }
 		.file-header small a:hover { color: #569cd6; }
 		pre {
+			height: calc(100vh - 40px - 76px - 32px - 3px - 38px - 16px);
 			padding: 16px;
 			background: #0d1117;
 			border-radius: 4px;
@@ -91,7 +92,7 @@
 <body>
 	<div class="container">
 		<form method="get" action="/">
-			<input type="text" name="q" value="" autofocus="autofocus" onfocus="this.select()" placeholder="Search..." />
+			<input type="text" name="q" value="" autofocus="autofocus" placeholder="Search..." />
 			<input type="submit" value="Search" />
 			<select name="ss" id="ss">
 				<option value="100">100</option>

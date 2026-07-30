@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +32,7 @@ type httpSearch struct {
 	RuntimeMilliseconds int64              `json:"runtimeMilliseconds"`
 	ProcessedFileCount  int64              `json:"processedFileCount"`
 	ExtensionFacet      []httpFacetResult  `json:"extensionFacet,omitempty"`
+	Page                []int              `json:"page,omitempty"`
 	Pages               []httpPageResult   `json:"pages,omitempty"`
 	Ext                 string             `json:"ext,omitempty"`
 	Ranker              string             `json:"ranker"`
@@ -125,9 +126,11 @@ func StartHttpServer(cfg *Config) {
 	}
 
 	http.HandleFunc("/file/raw/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%v %v", r.RemoteAddr, r.URL.String())
+
 		path := strings.Replace(r.URL.Path, "/file/raw/", "", 1)
 
-		if strings.TrimSpace(cfg.Directory) != "" {
+		if runtime.GOOS != `windows` {
 			path = "/" + path
 		}
 
@@ -147,13 +150,15 @@ func StartHttpServer(cfg *Config) {
 	})
 
 	http.HandleFunc("/file/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%v %v", r.RemoteAddr, r.URL.String())
+
 		startTime := makeTimestampMilli()
 		startPos := tryParseInt(r.URL.Query().Get("sp"), 0)
 		endPos := tryParseInt(r.URL.Query().Get("ep"), 0)
 
 		path := strings.Replace(r.URL.Path, "/file/", "", 1)
 
-		if strings.TrimSpace(cfg.Directory) != "" {
+		if runtime.GOOS != `windows` {
 			path = "/" + path
 		}
 
@@ -171,6 +176,7 @@ func StartHttpServer(cfg *Config) {
 
 		content, err := os.ReadFile(path)
 		if err != nil {
+			log.Printf("failed to read: %v", err)
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
@@ -213,6 +219,8 @@ func StartHttpServer(cfg *Config) {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%v %v", r.RemoteAddr, r.URL.String())
+
 		startTime := makeTimestampMilli()
 		query := r.URL.Query().Get("q")
 		snippetLength := tryParseInt(r.URL.Query().Get("ss"), 300)
@@ -290,8 +298,7 @@ func StartHttpServer(cfg *Config) {
 				rankerParam = "structural"
 			}
 
-			ctx := context.Background()
-			ch, stats, searchErr := DoSearch(ctx, &searchCfg, query, cache)
+			ch, stats, searchErr := DoSearch(r.Context(), &searchCfg, query, cache)
 			if searchErr != nil {
 				err := searchTmpl.Execute(w, httpSearch{
 					SearchTerm:  query,
@@ -522,6 +529,7 @@ func StartHttpServer(cfg *Config) {
 			RuntimeMilliseconds: makeTimestampMilli() - startTime,
 			ProcessedFileCount:  processedFileCount,
 			ExtensionFacet:      httpCalculateExtensionFacet(extensionFacets, query, snippetLength, rankerParam, codeFilter, gravityParam, noiseParam, snippetModeParam),
+			Page:                []int{max(0, page-4), page, min(page+4, len(pages)-1)},
 			Pages:               pages,
 			Ext:                 ext,
 			Ranker:              rankerParam,

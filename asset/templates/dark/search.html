@@ -17,6 +17,7 @@
 		.container { max-width: 960px; margin: 0 auto; }
 		h1 { font-size: 1.4em; margin: 0 0 16px 0; color: #e0e0e0; }
 		a { color: #569cd6; text-decoration: none; }
+		a.cur {border: 1px solid;}
 		a:hover { text-decoration: underline; }
 		form {
 			display: flex;
@@ -50,7 +51,17 @@
 			cursor: pointer;
 			font-size: 14px;
 		}
+		.clear {
+			padding: 8px 16px;
+			background: #3c3c3c;
+			border: 1px solid #555;
+			border-radius: 4px;
+			color: #d4d4d4;
+			cursor: pointer;
+			font-size: 14px;
+		}
 		input[type="submit"]:hover { background: #365f8a; }
+		.clear:hover { background: #525252; }
 		select {
 			padding: 8px;
 			background: #3c3c3c;
@@ -60,8 +71,21 @@
 			font-size: 14px;
 		}
 		.stats { color: #808080; font-size: 13px; }
-		.results-layout { display: flex; gap: 24px; }
-		.results-main { flex: 4; min-width: 0; }
+		.results-layout {
+			display: flex; 
+			gap: 24px; 
+			height: calc(100vh - 40px - 84px - 16px);
+		}
+		.results-info {
+			margin-top: auto;
+			width: 100%;
+  			border-top: 1px solid;
+		}
+		.results-main { 
+			overflow-y: auto;
+			flex: 4; 
+			min-width: 0; 
+		}
 		.results-sidebar { flex: 1; min-width: 150px; }
 		.result-item {
 			padding: 12px 0;
@@ -118,6 +142,7 @@
 			display: inline-block;
 			padding: 4px 10px;
 			margin-right: 4px;
+			margin-bottom: 4px;
 			background: #3c3c3c;
 			border-radius: 4px;
 			font-size: 13px;
@@ -129,8 +154,9 @@
 	<div class="container">
 		<form id="search-form" method="get" action="/">
 			<div class="search-row">
-				<input id="search-input" type="text" name="q" value="{{ .SearchTerm }}" autofocus="autofocus" onfocus="this.select()" placeholder="Search..." />
+				<input id="search-input" type="text" name="q" value="{{ .SearchTerm }}" autofocus="autofocus" placeholder="Search..." />
 				<input type="submit" value="Search" />
+				<input id="clear-botton" type="button" class="clear" value="Clear"/>
 			</div>
 			<select name="rk" onchange="this.form.submit()">
 				<option value="simple" {{ if eq .Ranker "simple" }}selected{{ end }}>simple</option>
@@ -175,34 +201,62 @@
 			<div class="results-main">
 				{{- range .Results }}
 				<div class="result-item">
-					<h4><a href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a>{{ if .Language }} <span style="color:#808080;font-size:12px">({{ .Language }})</span>{{ end }}</h4>
+					<h4><a target="_blank" href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a>{{ if .Language }} <span style="color:#808080;font-size:12px">({{ .Language }})</span>{{ end }}</h4>
 					{{ if .Lines }}<div class="stats">{{ .Language }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</div>{{ end }}
 					{{ if .IsLineMode }}<pre>{{ range .LineResults }}{{ if .Gap }}
 {{ end }}<span style="color:#808080;user-select:none">{{ printf "%4d " .LineNumber }}</span>{{ .Content }}
 {{ end }}</pre>{{ else }}{{- range .Content }}
 					<pre>{{ . }}</pre>
 					{{- end }}{{ end }}
-					<span class="jump-link">[<a href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}#{{ .StartPos }}">jump to match</a>]</span>
+					<span class="jump-link">[<a target="_blank" href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}#{{ .StartPos }}">jump to match</a>]</span>
 				</div>
 				{{- end }}
-
-				<div class="pages">
-				{{- range .Pages }}
-					<a href="/?q={{ .SearchTerm }}&ss={{ .SnippetSize }}&p={{ .Value }}&ext={{ .Ext }}&rk={{ .Ranker }}&cf={{ .CodeFilter }}&gv={{ .Gravity }}&ns={{ .Noise }}&sm={{ .SnippetMode }}">{{ .Name }}</a>
-				{{- end }}
-				</div>
 			</div>
-			{{- end}}
-			{{if .ExtensionFacet }}
-			<div class="results-sidebar">
-				<div class="sidebar-heading">Extensions</div>
-				<ul class="facet-list">
-				{{- range .ExtensionFacet }}
-					<li><a href="/?q={{ .SearchTerm }}&ss={{ .SnippetSize }}&ext={{ .Title }}&rk={{ .Ranker }}&cf={{ .CodeFilter }}&gv={{ .Gravity }}&ns={{ .Noise }}&sm={{ .SnippetMode }}">{{ .Title }}</a> <span class="facet-count">({{ .Count }})</span></li>
-				{{- end }}
+			{{ else }}
+			<div class="results-info">
+				<h3>Search Note:</h3>
+				<h4>Searches by default use AND boolean syntax for all terms</h4>
+				<ul>
+					<li>exact match using quotes "find this"</li>
+					<li>fuzzy match within 1 or 2 distance fuzzy~1 fuzzy~2</li>
+					<li>negate using NOT such as pride NOT prejudice</li>
+					<li>OR syntax such as catch OR throw</li>
+					<li>group with parentheses (cat OR dog) NOT fish</li>
+					<li>note: NOT binds to next term, use () with OR</li>
+					<li>regex with toothpick syntax /pr[e-i]de/</li>
+				</ul>
+				<h4>Searches can filter which files are searched by adding the following syntax</h4>
+				<ul>
+					<li>file:test (substring match on filename)</li>
+					<li>filename:.go (substring match on filename)</li>
+					<li>path:pkg/search (substring match on full file path)</li>
 				</ul>
 			</div>
-			{{- end }}
+			{{- end}}
+			<div class="results-sidebar">
+				{{if .Pages }}
+					<div class="pages">
+					{{- if gt (index $.Page 0) 0 }}.{{ end }}
+					{{- range $i, $el := .Pages }}
+						{{- if and (ge $i (index $.Page 0)) (le $i (index $.Page 2))}}
+							<a {{ if eq (index $.Page 1) $i }}class="cur"{{ end }} href="/?q={{ .SearchTerm }}&ss={{ .SnippetSize }}&p={{ .Value }}&ext={{ .Ext }}&rk={{ .Ranker }}&cf={{ .CodeFilter }}&gv={{ .Gravity }}&ns={{ .Noise }}&sm={{ .SnippetMode }}">{{ .Name }}</a>
+						{{ end }}
+					{{- end }}
+					{{- if and (lt (index $.Page 2) (add (len .Pages) -1)) (gt (len .Pages) 5) }}.{{- end }}
+					</div>
+				{{- end }}
+				{{if .ExtensionFacet }}
+					<div class="sidebar-heading">Extensions</div>
+					<ul class="facet-list">
+					{{- range $i, $el := .ExtensionFacet }}
+						{{ if lt $i 20 }}
+							<li><a href="/?q={{ .SearchTerm }}&ss={{ .SnippetSize }}&ext={{ .Title }}&rk={{ .Ranker }}&cf={{ .CodeFilter }}&gv={{ .Gravity }}&ns={{ .Noise }}&sm={{ .SnippetMode }}">{{ .Title }}</a> <span class="facet-count">({{ .Count }})</span></li>
+						{{- end }}
+					{{- end }}
+					{{- if gt (len .ExtensionFacet) 20 }}<li>.</li>{{- end }}
+					</ul>
+				{{- end }}
+			</div>
 		</div>
 	</div>
 <script>
@@ -212,8 +266,26 @@
 	var stats = document.getElementById('search-stats');
 	var container = document.getElementById('results-container');
 	var selects = form.querySelectorAll('select');
-	var timer = null;
 	var controller = null;
+	var searchNote 	= '<div class="results-info">'
+			 + '	<h3>Search Note:</h3>'
+			 + '	<h4>Searches by default use AND boolean syntax for all terms</h4>'
+			 + '	<ul>'
+			 + '		<li>exact match using quotes "find this"</li>'
+			 + '		<li>fuzzy match within 1 or 2 distance fuzzy~1 fuzzy~2</li>'
+			 + '		<li>negate using NOT such as pride NOT prejudice</li>'
+			 + '		<li>OR syntax such as catch OR throw</li>'
+			 + '		<li>group with parentheses (cat OR dog) NOT fish</li>'
+			 + '		<li>note: NOT binds to next term, use () with OR</li>'
+			 + '		<li>regex with toothpick syntax /pr[e-i]de/</li>'
+			 + '	</ul>'
+			 + '	<h4>Searches can filter which files are searched by adding the following syntax</h4>'
+			 + '	<ul>'
+			 + '		<li>file:test (substring match on filename)</li>'
+			 + '		<li>filename:.go (substring match on filename)</li>'
+			 + '		<li>path:pkg/search (substring match on full file path)</li>'
+			 + '	</ul>'
+			 + '</div>';
 
 	function escapeHTML(s) {
 		var d = document.createElement('div');
@@ -227,7 +299,7 @@
 		var gv = form.querySelector('select[name="gv"]').value;
 		var ns = form.querySelector('select[name="ns"]').value;
 		var sm = form.querySelector('select[name="sm"]').value;
-		return 'rk=' + encodeURIComponent(rk) + '&cf=' + encodeURIComponent(cf) + '&gv=' + encodeURIComponent(gv) + '&ns=' + encodeURIComponent(ns) + '&sm=' + encodeURIComponent(sm);
+		return 'p=0&rk=' + encodeURIComponent(rk) + '&cf=' + encodeURIComponent(cf) + '&gv=' + encodeURIComponent(gv) + '&ns=' + encodeURIComponent(ns) + '&sm=' + encodeURIComponent(sm);
 	}
 
 	function doSearch() {
@@ -238,17 +310,23 @@
 		history.replaceState(null, '', '/?q=' + encodeURIComponent(q) + '&' + params);
 
 		if (!q.trim()) {
-			stats.textContent = '';
-			container.innerHTML = '';
+			stats.textContent = '[0 results from 0 files in 0 ms]';
+			container.innerHTML = searchNote;
 			return;
 		}
 
-		stats.textContent = '[searching...]';
+		var st = Date.now();
+		var cancleI = setInterval(()=>{
+			stats.textContent = '[searching... '+(Date.now()-st)+'ms]';
+		}, 100);
 
 		if (controller) controller.abort();
 		controller = new AbortController();
 
-		fetch(url, { signal: controller.signal }).then(function(r) { return r.json(); }).then(function(data) {
+		fetch(url, { signal: controller.signal })
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			clearInterval(cancleI);
 			stats.textContent = '[' + data.resultsCount + ' results from ' + data.processedFileCount + ' files in ' + data.runtimeMilliseconds + ' ms]';
 			renderResults(data);
 		}).catch(function(e) {
@@ -258,12 +336,12 @@
 
 	function renderResults(data) {
 		var html = '';
+		html += '<div class="results-main">';
 		if (data.results && data.results.length > 0) {
-			html += '<div class="results-main">';
 			for (var i = 0; i < data.results.length; i++) {
 				var r = data.results[i];
 				html += '<div class="result-item">';
-				html += '<h4><a href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
+				html += '<h4><a target="_blank" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
 				if (r.language) html += ' <span style="color:#808080;font-size:12px">(' + escapeHTML(r.language) + ')</span>';
 				html += '</h4>';
 				if (r.lines) html += '<div class="stats">' + escapeHTML(r.language) + ' | Lines: ' + r.lines + ' | Code: ' + r.code + ' | Comment: ' + r.comment + ' | Blank: ' + r.blank + ' | Complexity: ' + r.complexity + '</div>';
@@ -285,26 +363,40 @@
 						html += '<pre>' + r.content[j] + '</pre>';
 					}
 				}
-				html += '<span class="jump-link">[<a href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + r.startPos + '">jump to match</a>]</span>';
+				html += '<span class="jump-link">[<a target="_blank" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + r.startPos + '">jump to match</a>]</span>';
 				html += '</div>';
 			}
+		} else {
+			html += searchNote;
+		}
+		html += '</div>';
+		html += '<div class="results-sidebar">';
+		if (data.pages) {
 			html += '<div class="pages">';
-			if (data.pages) {
-				for (var i = 0; i < data.pages.length; i++) {
+			var p0 = data.page[0];
+			var p1 = data.page[2];
+			p1 = p1>0?p1:Math.min(4,data.pages.length);
+
+			if(p0 > 0)html += '. ';
+			for (var i = 0; i < data.pages.length; i++) {
+				if(i >= p0 && i <= p1){
 					var p = data.pages[i];
-					html += '<a href="/?q=' + encodeURIComponent(p.searchTerm) + '&ss=' + p.snippetSize + '&p=' + p.value + '&ext=' + encodeURIComponent(p.ext || '') + '&rk=' + encodeURIComponent(p.ranker) + '&cf=' + encodeURIComponent(p.codeFilter) + '&gv=' + encodeURIComponent(p.gravity) + '&ns=' + encodeURIComponent(p.noise) + '&sm=' + encodeURIComponent(p.snippetMode || '') + '">' + escapeHTML(p.name) + '</a>';
+					html += '<a '+(i==data.page[1]?' class="cur" ':'')+'href="/?q=' + encodeURIComponent(p.searchTerm) + '&ss=' + p.snippetSize + '&p=' + p.value + '&ext=' + encodeURIComponent(p.ext || '') + '&rk=' + encodeURIComponent(p.ranker) + '&cf=' + encodeURIComponent(p.codeFilter) + '&gv=' + encodeURIComponent(p.gravity) + '&ns=' + encodeURIComponent(p.noise) + '&sm=' + encodeURIComponent(p.snippetMode || '') + '">' + escapeHTML(p.name) + '</a> ';
 				}
 			}
-			html += '</div></div>';
+			if(p1 < data.pages.length-1 && data.pages.length > 5)html += '.';
+			html += '</div>';
 		}
 		if (data.extensionFacet && data.extensionFacet.length > 0) {
-			html += '<div class="results-sidebar"><div class="sidebar-heading">Extensions</div><ul class="facet-list">';
-			for (var i = 0; i < data.extensionFacet.length; i++) {
+			html += '<div class="sidebar-heading">Extensions</div><ul class="facet-list">';
+			for (var i = 0; i < Math.min(data.extensionFacet.length,20); i++) {
 				var f = data.extensionFacet[i];
 				html += '<li><a href="/?q=' + encodeURIComponent(f.searchTerm) + '&ss=' + f.snippetSize + '&ext=' + encodeURIComponent(f.title) + '&rk=' + encodeURIComponent(f.ranker) + '&cf=' + encodeURIComponent(f.codeFilter) + '&gv=' + encodeURIComponent(f.gravity) + '&ns=' + encodeURIComponent(f.noise) + '&sm=' + encodeURIComponent(f.snippetMode || '') + '">' + escapeHTML(f.title) + '</a> <span class="facet-count">(' + f.count + ')</span></li>';
 			}
-			html += '</ul></div>';
+			if(data.extensionFacet.length>20)html += '<li>.</li>';
+			html += '</ul>';
 		}
+		html += '</div>';
 		container.innerHTML = html;
 	}
 
@@ -314,15 +406,13 @@
 		selects[i].addEventListener('change', function() { doSearch(); });
 	}
 
-	input.addEventListener('input', function() {
-		clearTimeout(timer);
-		timer = setTimeout(doSearch, 200);
-	});
-
 	form.addEventListener('submit', function(e) {
 		e.preventDefault();
-		clearTimeout(timer);
 		doSearch();
+	});
+	
+	document.getElementById('clear-botton').addEventListener("click", (e)=>{
+		document.getElementById('search-input').value = "";
 	});
 })();
 </script>

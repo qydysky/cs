@@ -22,7 +22,7 @@ func resolveSearchTemplate(cfg *Config) (*template.Template, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading custom search template %q: %w", cfg.SearchTemplate, err)
 		}
-		return template.New("search").Parse(string(data))
+		return template.New("search").Funcs(template.FuncMap{"add": add}).Parse(string(data))
 	}
 
 	if !isValidStyle(cfg.TemplateStyle) {
@@ -34,7 +34,7 @@ func resolveSearchTemplate(cfg *Config) (*template.Template, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading embedded search template for style %q: %w", cfg.TemplateStyle, err)
 	}
-	return template.New("search").Parse(string(data))
+	return template.New("search").Funcs(template.FuncMap{"add": add}).Parse(string(data))
 }
 
 // resolveDisplayTemplate returns the parsed display template. Custom file override
@@ -67,4 +67,8 @@ func isValidStyle(style string) bool {
 		}
 	}
 	return false
+}
+
+func add(a, b int) int {
+	return a + b
 }
