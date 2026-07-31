@@ -71,6 +71,7 @@
 			font-size: 14px;
 		}
 		.stats { color: #808080; font-size: 13px; }
+		.stop { color: #808080; font-size: 13px; display: none; }
 		.results-layout {
 			display: flex; 
 			gap: 24px; 
@@ -173,27 +174,28 @@
 				<option value="only-declarations" {{ if eq .CodeFilter "only-declarations" }}selected{{ end }}>only-declarations</option>
 				<option value="only-usages" {{ if eq .CodeFilter "only-usages" }}selected{{ end }}>only-usages</option>
 			</select>
-			<select name="gv" onchange="this.form.submit()">
+			<select name="gv" onchange="this.form.()">
 				<option value="off" {{ if eq .Gravity "off" }}selected{{ end }}>gravity: off</option>
 				<option value="low" {{ if eq .Gravity "low" }}selected{{ end }}>gravity: low</option>
 				<option value="default" {{ if eq .Gravity "default" }}selected{{ end }}>gravity: default</option>
 				<option value="logic" {{ if eq .Gravity "logic" }}selected{{ end }}>gravity: logic</option>
 				<option value="brain" {{ if eq .Gravity "brain" }}selected{{ end }}>gravity: brain</option>
 			</select>
-			<select name="ns" onchange="this.form.submit()">
+			<select name="ns" onchange="this.form.()">
 				<option value="silence" {{ if eq .Noise "silence" }}selected{{ end }}>noise: silence</option>
 				<option value="quiet" {{ if eq .Noise "quiet" }}selected{{ end }}>noise: quiet</option>
 				<option value="default" {{ if eq .Noise "default" }}selected{{ end }}>noise: default</option>
 				<option value="loud" {{ if eq .Noise "loud" }}selected{{ end }}>noise: loud</option>
 				<option value="raw" {{ if eq .Noise "raw" }}selected{{ end }}>noise: raw</option>
 			</select>
-			<select name="sm" onchange="this.form.submit()">
+			<select name="sm" onchange="this.form.()">
 				<option value="auto" {{ if eq .SnippetMode "auto" }}selected{{ end }}>snippet: auto</option>
 				<option value="snippet" {{ if eq .SnippetMode "snippet" }}selected{{ end }}>snippet: snippet</option>
 				<option value="lines" {{ if eq .SnippetMode "lines" }}selected{{ end }}>snippet: lines</option>
 				<option value="grep" {{ if eq .SnippetMode "grep" }}selected{{ end }}>snippet: grep</option>
 			</select>
 			<span id="search-stats" class="stats">[{{ .ResultsCount }} results from {{ .ProcessedFileCount }} files in {{ .RuntimeMilliseconds }} ms]</span>
+			<span id="search-stop" class="stop"><a href="#" onclick="stopload()">stop</a></span>
 		</form>
 
 		<div id="results-container" class="results-layout">
@@ -264,6 +266,7 @@
 	var input = document.getElementById('search-input');
 	var form = document.getElementById('search-form');
 	var stats = document.getElementById('search-stats');
+	var stop = document.getElementById('search-stop');
 	var container = document.getElementById('results-container');
 	var selects = form.querySelectorAll('select');
 	var controller = null;
@@ -318,16 +321,17 @@
 		if (controller) controller.abort();
 		controller = new AbortController();
 		window.stopload = ()=>{};
+		stop.style.display = 'block';
 		
 		var st = Date.now();
 		var cancleI = setInterval(()=>{
-			stats.innerHTML = '[searching... '+(Date.now()-st)+'ms] <a href="#" onclick="stopload()">stop</a>';
+			stats.innerHTML = '[searching... '+(Date.now()-st)+'ms]';
 		}, 100);
 		
 		window.stopload = ()=>{
 			clearInterval(cancleI);
 			controller.abort();
-			stats.textContent = '[stop]';
+			stop.style.display = 'none';
 		};
 
 		fetch(url, { signal: controller.signal })
@@ -413,7 +417,7 @@
 		selects[i].addEventListener('change', function() { doSearch(); });
 	}
 
-	form.addEventListener('submit', function(e) {
+	form.addEventListener('', function(e) {
 		e.preventDefault();
 		doSearch();
 	});
