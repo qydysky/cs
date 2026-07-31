@@ -317,12 +317,18 @@
 
 		if (controller) controller.abort();
 		controller = new AbortController();
-		window.stopload = ()=>{controller.abort();};
+		window.stopload = ()=>{};
 		
 		var st = Date.now();
 		var cancleI = setInterval(()=>{
 			stats.innerHTML = '[searching... '+(Date.now()-st)+'ms] <a href="#" onclick="stopload()">stop</a>';
 		}, 100);
+		
+		window.stopload = ()=>{
+			clearInterval(cancleI);
+			controller.abort();
+			stats.textContent = '[stop]';
+		};
 
 		fetch(url, { signal: controller.signal })
 		.then(function(r) { return r.json(); })
