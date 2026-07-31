@@ -315,13 +315,14 @@
 			return;
 		}
 
-		var st = Date.now();
-		var cancleI = setInterval(()=>{
-			stats.textContent = '[searching... '+(Date.now()-st)+'ms]';
-		}, 100);
-
 		if (controller) controller.abort();
 		controller = new AbortController();
+		window.stopload = controller.abort;
+		
+		var st = Date.now();
+		var cancleI = setInterval(()=>{
+			stats.innerHTML = '[searching... '+(Date.now()-st)+'ms] <a href="#" onclick="stopload()">stop</a>';
+		}, 100);
 
 		fetch(url, { signal: controller.signal })
 		.then(function(r) { return r.json(); })
