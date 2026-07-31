@@ -417,7 +417,7 @@
 		selects[i].addEventListener('change', function() { doSearch(); });
 	}
 
-	form.addEventListener('', function(e) {
+	form.addEventListener('submit', function(e) {
 		e.preventDefault();
 		doSearch();
 	});
