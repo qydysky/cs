@@ -317,7 +317,7 @@
 
 		if (controller) controller.abort();
 		controller = new AbortController();
-		window.stopload = controller.abort;
+		window.stopload = ()=>{controller.abort();};
 		
 		var st = Date.now();
 		var cancleI = setInterval(()=>{
