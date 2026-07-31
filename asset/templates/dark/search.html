@@ -334,7 +334,7 @@
 			clearInterval(cancleI);
 			controller.abort();
 			stats.textContent = '[stop]';
-			submitBotton.value = 'Search';
+			submitBotton.value = ' Wait ';
 		};
 
 		fetch(url, { signal: controller.signal })
@@ -345,6 +345,9 @@
 			renderResults(data);
 		}).catch(function(e) {
 			if (e.name !== 'AbortError') stats.textContent = '[error]';
+		}).finally(()=>{
+			submitBotton.value = 'Search';
+			controller = undefined;
 		});
 	}
 
