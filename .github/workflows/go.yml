@@ -70,7 +70,7 @@ jobs:
     - name: Build
       run: |
         go get .
-        GOEXPERIMENT=jsonv2 CGO_ENABLED=0 go build -pgo=auto -v -buildmode=exe -o cs.linux.${{ matrix.go }} main.go
+        GOEXPERIMENT=jsonv2 CGO_ENABLED=0 go build -pgo=auto -v -buildmode=exe -o cs.linux.${{ matrix.go }} .
       
     - name: Upload a Release Asset
       run: |
@@ -105,7 +105,7 @@ jobs:
         set CGO_ENABLED=0
         go get .
         set GOEXPERIMENT=jsonv2
-        go build -pgo=auto -v -buildmode=exe -o cs.win.${{ matrix.go }}.exe main.go
+        go build -pgo=auto -v -buildmode=exe -o cs.win.${{ matrix.go }}.exe .
 
     - name: Upload a Release Asset
       run: |
@@ -138,7 +138,7 @@ jobs:
       run: |
         set CGO_ENABLED=0
         go get .
-        GOEXPERIMENT=jsonv2 go build -pgo=auto -v -buildmode=exe -o cs.mac.${{ matrix.go }} main.go
+        GOEXPERIMENT=jsonv2 go build -pgo=auto -v -buildmode=exe -o cs.mac.${{ matrix.go }} .
 
     - name: Upload a Release Asset
       run: |
