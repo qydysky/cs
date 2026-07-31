@@ -71,7 +71,6 @@
 			font-size: 14px;
 		}
 		.stats { color: #808080; font-size: 13px; }
-		.stop { color: #808080; font-size: 13px; display: none; }
 		.results-layout {
 			display: flex; 
 			gap: 24px; 
@@ -156,7 +155,7 @@
 		<form id="search-form" method="get" action="/">
 			<div class="search-row">
 				<input id="search-input" type="text" name="q" value="{{ .SearchTerm }}" autofocus="autofocus" placeholder="Search..." />
-				<input type="submit" value="Search" />
+				<input id="submit-botton" type="submit" value="Search" />
 				<input id="clear-botton" type="button" class="clear" value="Clear"/>
 			</div>
 			<select name="rk" onchange="this.form.submit()">
@@ -195,7 +194,6 @@
 				<option value="grep" {{ if eq .SnippetMode "grep" }}selected{{ end }}>snippet: grep</option>
 			</select>
 			<span id="search-stats" class="stats">[{{ .ResultsCount }} results from {{ .ProcessedFileCount }} files in {{ .RuntimeMilliseconds }} ms]</span>
-			<span id="search-stop" class="stop"><a href="#" onclick="stopload()">stop</a></span>
 		</form>
 
 		<div id="results-container" class="results-layout">
@@ -266,7 +264,7 @@
 	var input = document.getElementById('search-input');
 	var form = document.getElementById('search-form');
 	var stats = document.getElementById('search-stats');
-	var stop = document.getElementById('search-stop');
+	var submitBotton = document.getElementById('submit-botton');
 	var container = document.getElementById('results-container');
 	var selects = form.querySelectorAll('select');
 	var controller = null;
@@ -306,6 +304,11 @@
 	}
 
 	function doSearch() {
+		if (controller){
+			window.stopload();
+			return;
+		}
+		
 		var q = input.value;
 		var params = getParams();
 		var url = '/?q=' + encodeURIComponent(q) + '&' + params + '&format=json';
@@ -317,11 +320,10 @@
 			container.innerHTML = searchNote;
 			return;
 		}
-
-		if (controller) controller.abort();
+		
 		controller = new AbortController();
 		window.stopload = ()=>{};
-		stop.style.display = 'block';
+		submitBotton.value = ' Stop ';
 		
 		var st = Date.now();
 		var cancleI = setInterval(()=>{
@@ -331,7 +333,8 @@
 		window.stopload = ()=>{
 			clearInterval(cancleI);
 			controller.abort();
-			stop.style.display = 'none';
+			stats.textContent = '[stop]';
+			submitBotton.value = 'Search';
 		};
 
 		fetch(url, { signal: controller.signal })
