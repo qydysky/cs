@@ -438,20 +438,22 @@ func RenderHTML(line string, kinds [][]TokenKind) string {
 			// if len(prevKind) == 0 {
 			// 	b.WriteString(seg)
 			// } else {
-			b.WriteString(`<span class="`)
+			css := ""
 			for _, v := range prevKind {
 				if class, ok := htmlClasses[v]; ok {
-					b.WriteString(class)
-					b.WriteByte(' ')
+					css += class + " "
 				}
 			}
-			b.WriteString(`">`)
+
+			b.WriteString(`<span class="` + css + `">`)
 
 			for j := 0; j < len(seg); j++ {
 				b.WriteByte(seg[j])
 				if seg[j] == '\n' {
-					b.WriteString(fmt.Sprintf("<a href=\"#%d\" id=\"%d\" class=\"lineNo\">%d</a>", lineNo, lineNo, lineNo))
+					b.WriteString("</span>")
+					fmt.Fprintf(&b, "<a href=\"#%d\" id=\"%d\" class=\"lineNo\">%d</a>", lineNo, lineNo, lineNo)
 					lineNo += 1
+					b.WriteString(`<span class="` + css + `">`)
 				}
 			}
 			b.WriteString("</span>")

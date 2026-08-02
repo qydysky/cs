@@ -11,6 +11,10 @@
 	</title>
 	<style>
 		*, *::before, *::after { box-sizing: border-box; }
+		* {
+			/* scrollbar-width: thin; 可选 auto、thin 或 none */
+			scrollbar-color: #7d7d7d transparent; /* 滑块颜色 轨道颜色 */
+		}
 		body {
 			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 			background: #1e1e1e;
@@ -87,12 +91,17 @@
   			border-top: 1px solid;
 		}
 		.results-main { 
+			height: 100%;
+			width: 100%;
+			display: flex; 
+			flex-direction: column;
 			overflow-y: auto;
 			flex: 4; 
 			min-width: 0; 
 		}
 		.results-sidebar { flex: 1; min-width: 150px; }
 		.result-item {
+			width: 100%;
 			padding: 12px 0;
 			border-bottom: 1px solid #333;
 		}
@@ -110,11 +119,17 @@
 			word-wrap: break-word;
 			overflow-x: auto;
 		}
-		.result-item strong {
-			background: #6b4c00;
-			color: #ffd700;
-			padding: 1px 2px;
-			border-radius: 2px;
+		.lineNo {
+			color: #808080;
+			user-select: none;
+			min-width: 3em;
+			display: inline-block;
+			text-align: right;
+			padding-right: 0.5em;
+			cursor: alias;
+		}
+		.result-item .syn-match { 
+			text-decoration: #6b4c00 0.2em solid underline;
 		}
 		.syn-kw  { color: #5fafff; }
 		.syn-str { color: #87d787; }
@@ -127,7 +142,6 @@
 		.jump-link a:hover { color: #569cd6; }
 		.sidebar-heading {
 			font-size: 13px;
-			text-transform: uppercase;
 			letter-spacing: 0.5px;
 			color: #808080;
 			margin: 0 0 8px 0;
@@ -160,6 +174,8 @@
 		<form id="search-form" method="get" action="/">
 			<div class="search-row">
 				<input id="search-input" type="text" name="q" value="{{ .SearchTerm }}" autofocus="autofocus" placeholder="Search..." />
+				<input id="page-input" type="hidden" name="p" value="{{ index .Page 1 }}" />
+				<input id="ext-input" type="hidden" name="ext" value="{{ .Ext }}" />
 				<input id="submit-botton" type="submit" value="Search" />
 				<input id="clear-botton" type="button" class="clear" value="Clear"/>
 			</div>
@@ -204,16 +220,15 @@
 		<div id="results-container" class="results-layout">
 			{{if .Results -}}
 			<div class="results-main">
-				{{- range .Results }}
+				{{- range $i, $res := .Results }}
 				<div class="result-item">
 					<h4><a target="_blank" href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a>{{ if .Language }} <span style="color:#808080;font-size:12px">({{ .Language }})</span>{{ end }}</h4>
 					{{ if .Lines }}<div class="stats">{{ .Language }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</div>{{ end }}
 					{{ if .IsLineMode }}<pre>{{ range .LineResults }}{{ if .Gap }}
-{{ end }}<span style="color:#808080;user-select:none">{{ printf "%4d " .LineNumber }}</span>{{ .Content }}
+{{ end }}<a target="_blank" class="lineNo" href="/file/{{ $res.Location }}?sp={{ $res.StartPos }}&ep={{ $res.EndPos }}#{{ .LineNumber }}">{{ .LineNumber }}</a>{{ .Content }}
 {{ end }}</pre>{{ else }}{{- range .Content }}
 					<pre>{{ . }}</pre>
 					{{- end }}{{ end }}
-					<span class="jump-link">[<a target="_blank" href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}#{{ printf "%d" (index .LineResults 0).LineNumber }}">jump to match</a>]</span>
 				</div>
 				{{- end }}
 			</div>
@@ -244,18 +259,23 @@
 					{{- if gt (index $.Page 0) 0 }}.{{ end }}
 					{{- range $i, $el := .Pages }}
 						{{- if and (ge $i (index $.Page 0)) (le $i (index $.Page 2))}}
-							<a {{ if eq (index $.Page 1) $i }}class="cur"{{ end }} href="/?q={{ .SearchTerm }}&ss={{ .SnippetSize }}&p={{ .Value }}&ext={{ .Ext }}&rk={{ .Ranker }}&cf={{ .CodeFilter }}&gv={{ .Gravity }}&ns={{ .Noise }}&sm={{ .SnippetMode }}">{{ .Name }}</a>
+							<a {{ if eq (index $.Page 1) $i }}class="cur"{{ end }} onclick="changePage('{{ .Value }}')" href="#">{{ .Name }}</a>
 						{{ end }}
 					{{- end }}
 					{{- if and (lt (index $.Page 2) (add (len .Pages) -1)) (gt (len .Pages) 5) }}.{{- end }}
 					</div>
 				{{- end }}
 				{{if .ExtensionFacet }}
-					<div class="sidebar-heading">Extensions</div>
+					<div class="sidebar-heading">
+						Extensions
+						{{ if ne .Ext "" }}
+							<a href="#" onclick="changeExt()"> ClearFiliter</a>
+						{{ end }}
+					</div>
 					<ul class="facet-list">
 					{{- range $i, $el := .ExtensionFacet }}
 						{{ if lt $i 20 }}
-							<li><a href="/?q={{ .SearchTerm }}&ss={{ .SnippetSize }}&ext={{ .Title }}&rk={{ .Ranker }}&cf={{ .CodeFilter }}&gv={{ .Gravity }}&ns={{ .Noise }}&sm={{ .SnippetMode }}">{{ .Title }}</a> <span class="facet-count">({{ .Count }})</span></li>
+							<li><a onclick="changeExt('{{ .Title }}')" href="#">{{ .Title }}</a> <span class="facet-count">({{ .Count }})</span></li>
 						{{- end }}
 					{{- end }}
 					{{- if gt (len .ExtensionFacet) 20 }}<li>.</li>{{- end }}
@@ -267,6 +287,8 @@
 <script>
 (function() {
 	var input = document.getElementById('search-input');
+	var page = document.getElementById('page-input');
+	var ext = document.getElementById('ext-input');
 	var form = document.getElementById('search-form');
 	var stats = document.getElementById('search-stats');
 	var submitBotton = document.getElementById('submit-botton');
@@ -300,12 +322,14 @@
 	}
 
 	function getParams() {
+		var p = page.value;
+		var e = ext.value;
 		var rk = form.querySelector('select[name="rk"]').value;
 		var cf = form.querySelector('select[name="cf"]').value;
 		var gv = form.querySelector('select[name="gv"]').value;
 		var ns = form.querySelector('select[name="ns"]').value;
 		var sm = form.querySelector('select[name="sm"]').value;
-		return 'p=0&rk=' + encodeURIComponent(rk) + '&cf=' + encodeURIComponent(cf) + '&gv=' + encodeURIComponent(gv) + '&ns=' + encodeURIComponent(ns) + '&sm=' + encodeURIComponent(sm);
+		return 'p='+encodeURIComponent(p) + '&ext=' + encodeURIComponent(e) + '&rk=' + encodeURIComponent(rk) + '&cf=' + encodeURIComponent(cf) + '&gv=' + encodeURIComponent(gv) + '&ns=' + encodeURIComponent(ns) + '&sm=' + encodeURIComponent(sm);
 	}
 
 	function doSearch() {
@@ -322,7 +346,7 @@
 
 		if (!q.trim()) {
 			stats.textContent = '[0 results from 0 files in 0 ms]';
-			container.innerHTML = searchNote;
+			container.innerHTML = searchNote+'<div class="results-sidebar"></div>';
 			return;
 		}
 		
@@ -349,7 +373,10 @@
 			stats.textContent = '[' + data.resultsCount + ' results from ' + data.processedFileCount + ' files in ' + data.runtimeMilliseconds + ' ms]';
 			renderResults(data);
 		}).catch(function(e) {
-			if (e.name !== 'AbortError') stats.textContent = '[error]';
+			if (e.name !== 'AbortError') {
+				console.log(e);
+				stats.textContent = '[error]';
+			}
 		}).finally(()=>{
 			submitBotton.value = 'Search';
 			controller = undefined;
@@ -366,7 +393,7 @@
 				html += '<h4><a target="_blank" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
 				if (r.language) html += ' <span style="color:#808080;font-size:12px">(' + escapeHTML(r.language) + ')</span>';
 				html += '</h4>';
-				if (r.lines) html += '<div class="stats">' + escapeHTML(r.language) + ' | Lines: ' + r.lines + ' | Code: ' + r.code + ' | Comment: ' + r.comment + ' | Blank: ' + r.blank + ' | Complexity: ' + r.complexity + '</div>';
+				if (r.lines) html += '<div class="stats">' + escapeHTML(r.language) + ' | Lines: ' + (r.lines?r.lines:0) + ' | Code: ' + (r.code?r.code:0) + ' | Comment: ' + (r.comment?r.comment:0) + ' | Blank: ' + (r.blank?r.blank:0) + ' | Complexity: ' + (r.complexity?r.complexity:0) + '</div>';
 				if (r.isLineMode && r.lineResults) {
 					html += '<pre>';
 					var prevLN = 0;
@@ -376,8 +403,8 @@
 							html += '\n';
 						}
 						prevLN = lr.lineNumber;
-						var num = ('    ' + lr.lineNumber).slice(-4) + ' ';
-						html += '<span style="color:#808080;user-select:none">' + num + '</span>' + lr.content + '\n';
+						// var num = ('    ' + lr.lineNumber).slice(-4) + ' ';
+						html += '<a target="_blank" class="lineNo" href="/file/'+escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + lr.lineNumber + '">' + lr.lineNumber + '</a>' + lr.content + '\n';
 					}
 					html += '</pre>';
 				} else if (r.content) {
@@ -385,7 +412,8 @@
 						html += '<pre>' + r.content[j] + '</pre>';
 					}
 				}
-				html += '<span class="jump-link">[<a target="_blank" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + r.lineResults[0].lineNumber + '">jump to match</a>]</span>';
+				// if(r.lineResults && r.lineResults.length>0)
+				// 	html += '<span class="jump-link">[<a target="_blank" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + r.lineResults[0].lineNumber + '">jump to match</a>]</span>';
 				html += '</div>';
 			}
 		} else {
@@ -403,17 +431,19 @@
 			for (var i = 0; i < data.pages.length; i++) {
 				if(i >= p0 && i <= p1){
 					var p = data.pages[i];
-					html += '<a '+(i==data.page[1]?' class="cur" ':'')+'href="/?q=' + encodeURIComponent(p.searchTerm) + '&ss=' + p.snippetSize + '&p=' + p.value + '&ext=' + encodeURIComponent(p.ext || '') + '&rk=' + encodeURIComponent(p.ranker) + '&cf=' + encodeURIComponent(p.codeFilter) + '&gv=' + encodeURIComponent(p.gravity) + '&ns=' + encodeURIComponent(p.noise) + '&sm=' + encodeURIComponent(p.snippetMode || '') + '">' + escapeHTML(p.name) + '</a> ';
+					html += '<a '+(i==data.page[1]?' class="cur" ':'')+'onclick="changePage('+p.value+')" href="#">' + escapeHTML(p.name) + '</a> ';
 				}
 			}
 			if(p1 < data.pages.length-1 && data.pages.length > 5)html += '.';
 			html += '</div>';
 		}
 		if (data.extensionFacet && data.extensionFacet.length > 0) {
-			html += '<div class="sidebar-heading">Extensions</div><ul class="facet-list">';
+			html += '<div class="sidebar-heading">Extensions';
+			if(ext.value!="")html += '<a href="#" onclick="changeExt()"> ClearFiliter</a>';
+			html += '</div><ul class="facet-list">';
 			for (var i = 0; i < Math.min(data.extensionFacet.length,20); i++) {
 				var f = data.extensionFacet[i];
-				html += '<li><a href="/?q=' + encodeURIComponent(f.searchTerm) + '&ss=' + f.snippetSize + '&ext=' + encodeURIComponent(f.title) + '&rk=' + encodeURIComponent(f.ranker) + '&cf=' + encodeURIComponent(f.codeFilter) + '&gv=' + encodeURIComponent(f.gravity) + '&ns=' + encodeURIComponent(f.noise) + '&sm=' + encodeURIComponent(f.snippetMode || '') + '">' + escapeHTML(f.title) + '</a> <span class="facet-count">(' + f.count + ')</span></li>';
+				html += '<li><a onclick="changeExt(\''+f.title+'\')" href="#">' + escapeHTML(f.title) + '</a> <span class="facet-count">(' + f.count + ')</span></li>';
 			}
 			if(data.extensionFacet.length>20)html += '<li>.</li>';
 			html += '</ul>';
@@ -435,7 +465,20 @@
 	
 	document.getElementById('clear-botton').addEventListener("click", (e)=>{
 		document.getElementById('search-input').value = "";
+		document.getElementById('ext-input').value = "";
+		document.getElementById('page-input').value = "";
 	});
+
+	window.changePage=(e)=>{
+		page.value = e?e:0;
+		doSearch();
+	}
+
+	window.changeExt=(e)=>{
+		page.value = 0;
+		ext.value = e?e:'';
+		doSearch();
+	}
 })();
 </script>
 </body>
