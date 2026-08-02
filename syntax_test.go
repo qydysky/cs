@@ -3,6 +3,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -137,13 +138,13 @@ func TestBuildKindArray_MatchOverridesSyntax(t *testing.T) {
 
 	// Positions 0-3 should be TkMatch (overriding TkKeyword)
 	for i := 0; i < 4; i++ {
-		if kinds[i] != TkMatch {
+		if !slices.Contains(kinds[i], TkMatch) {
 			t.Errorf("position %d: expected TkMatch, got %d", i, kinds[i])
 		}
 	}
 
 	// Position after "func " should NOT be TkMatch
-	if kinds[5] == TkMatch {
+	if slices.Contains(kinds[5], TkMatch) {
 		t.Error("position 5 should not be TkMatch")
 	}
 }
@@ -157,7 +158,7 @@ func TestBuildKindArray_EmptyLine(t *testing.T) {
 
 func TestRenderANSI_PlainText(t *testing.T) {
 	line := "hello"
-	kinds := make([]TokenKind, len(line)) // all TkPlain
+	kinds := make([][]TokenKind, len(line)) // all TkPlain
 	result := RenderANSI(line, kinds)
 	if result != "hello" {
 		t.Errorf("expected plain 'hello', got %q", result)
@@ -212,7 +213,7 @@ func TestRenderLipgloss_EmptyLine(t *testing.T) {
 
 func TestRenderHTML_PlainText(t *testing.T) {
 	line := "hello"
-	kinds := make([]TokenKind, len(line)) // all TkPlain
+	kinds := make([][]TokenKind, len(line)) // all TkPlain
 	result := RenderHTML(line, kinds)
 	if result != "hello" {
 		t.Errorf("expected plain 'hello', got %q", result)

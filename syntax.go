@@ -3,7 +3,9 @@
 package main
 
 import (
+	"fmt"
 	"html"
+	"slices"
 	"strings"
 	"text/scanner"
 	"unicode"
@@ -185,8 +187,8 @@ func classifyToken(tok rune, text string) TokenKind {
 
 // BuildKindArray creates a per-byte TokenKind array for a line.
 // Syntax tokens are stamped first, then match locations override as TkMatch.
-func BuildKindArray(line string, tokens []Token, matchLocs [][]int) []TokenKind {
-	kinds := make([]TokenKind, len(line))
+func BuildKindArray(line string, tokens []Token, matchLocs [][]int) [][]TokenKind {
+	kinds := make([][]TokenKind, len(line))
 	// Default is TkPlain (zero value)
 
 	// Stamp syntax tokens
@@ -200,7 +202,7 @@ func BuildKindArray(line string, tokens []Token, matchLocs [][]int) []TokenKind 
 			end = len(line)
 		}
 		for i := start; i < end; i++ {
-			kinds[i] = t.Kind
+			kinds[i] = append(kinds[i], t.Kind)
 		}
 	}
 
@@ -218,7 +220,7 @@ func BuildKindArray(line string, tokens []Token, matchLocs [][]int) []TokenKind 
 			end = len(line)
 		}
 		for i := start; i < end; i++ {
-			kinds[i] = TkMatch
+			kinds[i] = append(kinds[i], TkMatch)
 		}
 	}
 
@@ -239,7 +241,7 @@ var ansiStyles = map[TokenKind]string{
 const ansiReset = "\033[0m"
 
 // RenderANSI renders a line with ANSI color codes based on the per-byte kind array.
-func RenderANSI(line string, kinds []TokenKind) string {
+func RenderANSI(line string, kinds [][]TokenKind) string {
 	if len(line) == 0 {
 		return ""
 	}
@@ -248,12 +250,12 @@ func RenderANSI(line string, kinds []TokenKind) string {
 	b.Grow(len(line) * 2) // rough estimate
 
 	segStart := 0
-	prevKind := kinds[0]
+	prevKind := kinds[0][len(kinds[0])-1]
 
 	for i := 1; i <= len(line); i++ {
 		var curKind TokenKind
 		if i < len(line) {
-			curKind = kinds[i]
+			curKind = kinds[i][len(kinds[i])-1]
 		}
 
 		if i == len(line) || curKind != prevKind {
@@ -335,7 +337,7 @@ func lipglossStyle(kind TokenKind, isSelected bool) lipgloss.Style {
 }
 
 // RenderLipgloss renders a line with lipgloss styles based on the per-byte kind array.
-func RenderLipgloss(line string, kinds []TokenKind, isSelected bool) string {
+func RenderLipgloss(line string, kinds [][]TokenKind, isSelected bool) string {
 	if len(line) == 0 {
 		if isSelected {
 			return selectedSnippetStyle.Render("")
@@ -346,12 +348,12 @@ func RenderLipgloss(line string, kinds []TokenKind, isSelected bool) string {
 	var b strings.Builder
 
 	segStart := 0
-	prevKind := kinds[0]
+	prevKind := kinds[0][len(kinds[0])-1]
 
 	for i := 1; i <= len(line); i++ {
 		var curKind TokenKind
 		if i < len(line) {
-			curKind = kinds[i]
+			curKind = kinds[i][len(kinds[i])-1]
 		}
 
 		if i == len(line) || curKind != prevKind {
@@ -394,12 +396,13 @@ var htmlClasses = map[TokenKind]string{
 	TkNumber:      "syn-num",
 	TkType:        "syn-typ",
 	TkPunctuation: "syn-pun",
+	TkMatch:       "syn-match",
 }
 
 // RenderHTML renders a line with HTML span tags based on the per-byte kind array.
 // TkMatch segments are wrapped in <strong> tags. Other syntax kinds get <span class="syn-*">.
 // All text content is HTML-escaped.
-func RenderHTML(line string, kinds []TokenKind) string {
+func RenderHTML(line string, kinds [][]TokenKind) string {
 	if len(line) == 0 {
 		return ""
 	}
@@ -410,30 +413,62 @@ func RenderHTML(line string, kinds []TokenKind) string {
 	var b strings.Builder
 	b.Grow(len(line) * 2)
 
+	lineNo := 1
 	segStart := 0
 	prevKind := kinds[0]
 
+	if strings.Contains(line, "\n") {
+		b.WriteString(fmt.Sprintf("<a href=\"#%d\" id=\"%d\" class=\"lineNo\">%d</a>", lineNo, lineNo, lineNo))
+		lineNo += 1
+	}
+
 	for i := 1; i <= len(line); i++ {
-		var curKind TokenKind
+		var curKind []TokenKind
 		if i < len(line) {
 			curKind = kinds[i]
 		}
 
-		if i == len(line) || curKind != prevKind {
+		if i == len(line) || !slices.Equal(curKind, prevKind) {
 			seg := html.EscapeString(line[segStart:i])
-			if prevKind == TkMatch {
-				b.WriteString("<strong>")
-				b.WriteString(seg)
-				b.WriteString("</strong>")
-			} else if class, ok := htmlClasses[prevKind]; ok {
-				b.WriteString(`<span class="`)
-				b.WriteString(class)
-				b.WriteString(`">`)
-				b.WriteString(seg)
-				b.WriteString("</span>")
-			} else {
-				b.WriteString(seg)
+			// for i := 0; i < len(seg); i++ {
+			// 	if seg[i] == '\n' {
+			// 		b.WriteString(`<span style="color:#808080;user-select:none"`)
+			// 	}
+			// }
+			// if len(prevKind) == 0 {
+			// 	b.WriteString(seg)
+			// } else {
+			b.WriteString(`<span class="`)
+			for _, v := range prevKind {
+				if class, ok := htmlClasses[v]; ok {
+					b.WriteString(class)
+					b.WriteByte(' ')
+				}
 			}
+			b.WriteString(`">`)
+
+			for j := 0; j < len(seg); j++ {
+				b.WriteByte(seg[j])
+				if seg[j] == '\n' {
+					b.WriteString(fmt.Sprintf("<a href=\"#%d\" id=\"%d\" class=\"lineNo\">%d</a>", lineNo, lineNo, lineNo))
+					lineNo += 1
+				}
+			}
+			b.WriteString("</span>")
+			// }
+			// if prevKind == TkMatch {
+			// 	b.WriteString("<strong>")
+			// 	b.WriteString(seg)
+			// 	b.WriteString("</strong>")
+			// } else if class, ok := htmlClasses[prevKind]; ok {
+			// 	b.WriteString(`<span class="`)
+			// 	b.WriteString(class)
+			// 	b.WriteString(`">`)
+			// 	b.WriteString(seg)
+			// 	b.WriteString("</span>")
+			// } else {
+			// 	b.WriteString(seg)
+			// }
 			segStart = i
 			prevKind = curKind
 		}

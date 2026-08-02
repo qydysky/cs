@@ -75,12 +75,16 @@
 			overflow-x: auto;
 			line-height: 1.6;
 		}
-		strong {
-			background: #6b4c00;
-			color: #ffd700;
-			padding: 1px 2px;
-			border-radius: 2px;
+		.lineNo {
+			color: #808080;
+			user-select: none;
+			min-width: 3em;
+			display: inline-block;
+			text-align: right;
+			padding-right: 0.5em;
+			cursor: alias;
 		}
+		.syn-match { text-decoration: #6b4c00 dotted underline; }
 		.syn-kw  { color: #5fafff; }
 		.syn-str { color: #87d787; }
 		.syn-cmt { color: #767676; }
@@ -91,7 +95,7 @@
 </head>
 <body>
 	<div class="container">
-		<form method="get" action="/">
+		<form method="get" target="_blank" action="/">
 			<input type="text" name="q" value="" autofocus="autofocus" placeholder="Search..." />
 			<input type="submit" value="Search" />
 			<select name="ss" id="ss">
