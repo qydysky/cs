@@ -246,6 +246,10 @@ func StartHttpServer(cfg *Config) {
 			Complexity:          sccComplexity,
 		}
 
+		if runtime.GOOS == `windows` {
+			display.Location = strings.ReplaceAll(display.Location, "\\", "/")
+		}
+
 		if state, e := f.Stat(); e == nil {
 			display.ModTime = state.ModTime()
 		}
