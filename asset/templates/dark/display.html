@@ -130,17 +130,29 @@
 		<div class="file-header">
 			<h4>{{ .Location }}</h4>
 			<small>[<a href="/file/raw/{{ .Location }}">raw file</a>]</small>
-			{{ if .Language }}<br><small class="stats">{{ .Language }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</small>{{ end }}
+			<small id="scrollBack" style="display: none;">[<a href="#">scroll to </a>]</small>
+			{{ if .Language }}<br><small class="stats">{{ .Language }} | ModTime: {{ .ModTime.Format "2006-01-02T15:04:05Z07:00" }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</small>{{ end }}
 		</div>
 		<pre id="code" class="smooth">{{ .Content }}</pre>
 	</div>
 	<script type="text/javascript">
 		window.addEventListener("load", function () {
-			setTimeout(function () {
-				var hash = window.location.hash;
-				window.location.hash = "";
-				window.location.hash = hash;
-			}, 300);
+			function setScrollBack() {
+				if(window.location.hash=="")return;
+				document.getElementById("scrollBack").style.display = "inline";
+				document.getElementById("scrollBack").children[0].href = window.location.hash;
+				document.getElementById("scrollBack").children[0].textContent = "scroll to "+window.location.hash;
+			}
+			if(window.location.hash!=""){
+				setTimeout(function () {
+					var hash = window.location.hash;
+					window.location.hash = "";
+					window.location.hash = hash;
+				}, 300);
+			}
+
+			setScrollBack();
+			window.addEventListener("hashchange", setScrollBack);
 		});
 	</script>
 </body>

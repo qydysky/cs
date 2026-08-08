@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -51,6 +52,7 @@ type httpLineResult struct {
 type httpSearchResult struct {
 	Title              string           `json:"title"`
 	Location           string           `json:"location"`
+	ModTime            time.Time        `json:"modTime"`
 	Content            []template.HTML  `json:"content,omitempty"`
 	StartPos           int              `json:"startPos"`
 	EndPos             int              `json:"endPos"`
@@ -70,6 +72,7 @@ type httpSearchResult struct {
 type httpFileDisplay struct {
 	Location            string
 	Content             template.HTML
+	ModTime             time.Time
 	RuntimeMilliseconds int64
 	Language            string
 	Lines               int64
@@ -120,9 +123,13 @@ func StartHttpServer(cfg *Config) {
 	if strings.TrimSpace(baseDir) == "" {
 		baseDir = "."
 	}
-	httpBaseDir, err := filepath.Abs(baseDir)
-	if err != nil {
-		log.Fatalf("failed to resolve base directory: %v", err)
+	var httpBaseDirs []string
+	for v := range strings.SplitSeq(baseDir, ",") {
+		httpBaseDir, err := filepath.Abs(v)
+		if err != nil {
+			log.Fatalf("failed to resolve base directory: %v", err)
+		}
+		httpBaseDirs = append(httpBaseDirs, httpBaseDir)
 	}
 
 	http.HandleFunc("/file/raw/", func(w http.ResponseWriter, r *http.Request) {
@@ -138,11 +145,19 @@ func StartHttpServer(cfg *Config) {
 		// (avoid filepath.Abs which depends on os.Getwd at request time)
 		absPath := filepath.Clean(path)
 		if !filepath.IsAbs(absPath) {
-			absPath = filepath.Join(httpBaseDir, absPath)
+			http.Error(w, "relPath is forbidden when httpBaseDirs more then one", http.StatusForbidden)
+			// absPath = filepath.Join(httpBaseDir, absPath)
 		}
-		if !strings.HasPrefix(absPath, httpBaseDir+string(filepath.Separator)) && absPath != httpBaseDir {
+
+		ok := false
+		for _, httpBaseDir := range httpBaseDirs {
+			if strings.HasPrefix(absPath, httpBaseDir+string(filepath.Separator)) || absPath == httpBaseDir {
+				ok = true
+				break
+			}
+		}
+		if !ok {
 			http.Error(w, "path is outside the project directory", http.StatusForbidden)
-			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
@@ -166,15 +181,32 @@ func StartHttpServer(cfg *Config) {
 		// (avoid filepath.Abs which depends on os.Getwd at request time)
 		absPath := filepath.Clean(path)
 		if !filepath.IsAbs(absPath) {
-			absPath = filepath.Join(httpBaseDir, absPath)
+			http.Error(w, "relPath is forbidden when httpBaseDirs more then one", http.StatusForbidden)
+			// absPath = filepath.Join(httpBaseDir, absPath)
 		}
-		if !strings.HasPrefix(absPath, httpBaseDir+string(filepath.Separator)) && absPath != httpBaseDir {
+
+		ok := false
+		for _, httpBaseDir := range httpBaseDirs {
+			if strings.HasPrefix(absPath, httpBaseDir+string(filepath.Separator)) || absPath == httpBaseDir {
+				ok = true
+				break
+			}
+		}
+		if !ok {
 			http.Error(w, "path is outside the project directory", http.StatusForbidden)
-			return
 		}
+
 		path = absPath
 
-		content, err := os.ReadFile(path)
+		f, err := os.Open(path)
+		if err != nil {
+			log.Printf("failed to open: %v", err)
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}
+		defer f.Close()
+
+		content, err := io.ReadAll(f)
 		if err != nil {
 			log.Printf("failed to read: %v", err)
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -202,7 +234,7 @@ func StartHttpServer(cfg *Config) {
 
 		lang, sccLines, sccCode, sccComment, sccBlank, sccComplexity, _ := fileCodeStats(filepath.Base(path), content)
 
-		err = displayTmpl.Execute(w, httpFileDisplay{
+		display := httpFileDisplay{
 			Location:            path,
 			Content:             template.HTML(coloredContent),
 			RuntimeMilliseconds: makeTimestampMilli() - startTime,
@@ -212,7 +244,13 @@ func StartHttpServer(cfg *Config) {
 			Comment:             sccComment,
 			Blank:               sccBlank,
 			Complexity:          sccComplexity,
-		})
+		}
+
+		if state, e := f.Stat(); e == nil {
+			display.ModTime = state.ModTime()
+		}
+
+		err = displayTmpl.Execute(w, display)
 		if err != nil {
 			log.Printf("template execute error: %v", err)
 		}
@@ -357,10 +395,25 @@ func StartHttpServer(cfg *Config) {
 		for _, res := range displayResults {
 			fileMode := resolveSnippetMode(snippetModeParam, res.Filename)
 			prose := snippet.IsProseFile(res.Extension)
+			searchRes := httpSearchResult{
+				Title:              res.Location,
+				Location:           res.Location,
+				ModTime:            res.ModTime,
+				Score:              res.Score,
+				Language:           res.Language,
+				Lines:              res.Lines,
+				Code:               res.Code,
+				Comment:            res.Comment,
+				Blank:              res.Blank,
+				Complexity:         res.Complexity,
+				DuplicateCount:     res.DuplicateCount,
+				DuplicateLocations: res.DuplicateLocations,
+			}
 
 			if fileMode == "grep" {
 				lineResults := snippet.FindAllMatchingLines(res, cfg.LineLimit, 0, 0)
 				if len(lineResults) == 0 {
+					searchResults = append(searchResults, searchRes)
 					continue
 				}
 				var httpLines []httpLineResult
@@ -397,26 +450,16 @@ func StartHttpServer(cfg *Config) {
 					}
 				}
 
-				searchResults = append(searchResults, httpSearchResult{
-					Title:              res.Location,
-					Location:           res.Location,
-					Score:              res.Score,
-					StartPos:           startPos,
-					EndPos:             endPos,
-					IsLineMode:         true,
-					LineResults:        httpLines,
-					Language:           res.Language,
-					Lines:              res.Lines,
-					Code:               res.Code,
-					Comment:            res.Comment,
-					Blank:              res.Blank,
-					Complexity:         res.Complexity,
-					DuplicateCount:     res.DuplicateCount,
-					DuplicateLocations: res.DuplicateLocations,
-				})
+				searchRes.StartPos = startPos
+				searchRes.EndPos = endPos
+				searchRes.IsLineMode = true
+				searchRes.LineResults = httpLines
+
+				searchResults = append(searchResults, searchRes)
 			} else if fileMode == "lines" {
 				lineResults := snippet.FindMatchingLines(res, 2)
 				if len(lineResults) == 0 {
+					searchResults = append(searchResults, searchRes)
 					continue
 				}
 				var httpLines []httpLineResult
@@ -454,26 +497,16 @@ func StartHttpServer(cfg *Config) {
 					}
 				}
 
-				searchResults = append(searchResults, httpSearchResult{
-					Title:              res.Location,
-					Location:           res.Location,
-					Score:              res.Score,
-					StartPos:           startPos,
-					EndPos:             endPos,
-					IsLineMode:         true,
-					LineResults:        httpLines,
-					Language:           res.Language,
-					Lines:              res.Lines,
-					Code:               res.Code,
-					Comment:            res.Comment,
-					Blank:              res.Blank,
-					Complexity:         res.Complexity,
-					DuplicateCount:     res.DuplicateCount,
-					DuplicateLocations: res.DuplicateLocations,
-				})
+				searchRes.StartPos = startPos
+				searchRes.EndPos = endPos
+				searchRes.IsLineMode = true
+				searchRes.LineResults = httpLines
+
+				searchResults = append(searchResults, searchRes)
 			} else {
 				snippets := snippet.ExtractRelevant(res, documentTermFrequency, snippetLength)
 				if len(snippets) == 0 {
+					searchResults = append(searchResults, searchRes)
 					continue
 				}
 				v3 := snippets[0]
@@ -502,22 +535,11 @@ func StartHttpServer(cfg *Config) {
 					coloredContent = RenderHTMLLine(v3.Content, l, prose)
 				}
 
-				searchResults = append(searchResults, httpSearchResult{
-					Title:              res.Location,
-					Location:           res.Location,
-					Content:            []template.HTML{template.HTML(coloredContent)},
-					StartPos:           v3.StartPos,
-					EndPos:             v3.EndPos,
-					Score:              res.Score,
-					Language:           res.Language,
-					Lines:              res.Lines,
-					Code:               res.Code,
-					Comment:            res.Comment,
-					Blank:              res.Blank,
-					Complexity:         res.Complexity,
-					DuplicateCount:     res.DuplicateCount,
-					DuplicateLocations: res.DuplicateLocations,
-				})
+				searchRes.Content = []template.HTML{template.HTML(coloredContent)}
+				searchRes.StartPos = v3.StartPos
+				searchRes.EndPos = v3.EndPos
+
+				searchResults = append(searchResults, searchRes)
 			}
 		}
 

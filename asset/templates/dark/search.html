@@ -222,10 +222,10 @@
 			<div class="results-main">
 				{{- range $i, $res := .Results }}
 				<div class="result-item">
-					<h4><a target="_blank" href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a>{{ if .Language }} <span style="color:#808080;font-size:12px">({{ .Language }})</span>{{ end }}</h4>
-					{{ if .Lines }}<div class="stats">{{ .Language }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</div>{{ end }}
+					<h4><a href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a>{{ if .Language }} <span style="color:#808080;font-size:12px">({{ .Language }})</span>{{ end }}</h4>
+					{{ if .Lines }}<div class="stats">{{ .Language }} | ModTime: {{ .ModTime.Format "2006-01-02T15:04:05Z07:00" }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</div>{{ end }}
 					{{ if .IsLineMode }}<pre>{{ range .LineResults }}{{ if .Gap }}
-{{ end }}<a target="_blank" class="lineNo" href="/file/{{ $res.Location }}?sp={{ $res.StartPos }}&ep={{ $res.EndPos }}#{{ .LineNumber }}">{{ .LineNumber }}</a>{{ .Content }}
+{{ end }}<a class="lineNo" href="/file/{{ $res.Location }}?sp={{ $res.StartPos }}&ep={{ $res.EndPos }}#{{ .LineNumber }}">{{ .LineNumber }}</a>{{ .Content }}
 {{ end }}</pre>{{ else }}{{- range .Content }}
 					<pre>{{ . }}</pre>
 					{{- end }}{{ end }}
@@ -383,6 +383,28 @@
 		});
 	}
 
+	function toLocalRFC3339(date) {
+		const pad = (num) => String(num).padStart(2, '0');
+		
+		const year = date.getFullYear();
+		const month = pad(date.getMonth() + 1);
+		const day = pad(date.getDate());
+		const hours = pad(date.getHours());
+		const minutes = pad(date.getMinutes());
+		const seconds = pad(date.getSeconds());
+		const ms = String(date.getMilliseconds()).padStart(3, '0');
+
+		const offsetMinutes = date.getTimezoneOffset();
+		if (offsetMinutes === 0) return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
+
+		const sign = offsetMinutes > 0 ? '-' : '+';
+		const absOffset = Math.abs(offsetMinutes);
+		const offsetHours = pad(Math.floor(absOffset / 60));
+		const offsetMins = pad(absOffset % 60);
+
+		return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMins}`;
+	}
+
 	function renderResults(data) {
 		var html = '';
 		html += '<div class="results-main">';
@@ -390,10 +412,10 @@
 			for (var i = 0; i < data.results.length; i++) {
 				var r = data.results[i];
 				html += '<div class="result-item">';
-				html += '<h4><a target="_blank" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
+				html += '<h4><a href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
 				if (r.language) html += ' <span style="color:#808080;font-size:12px">(' + escapeHTML(r.language) + ')</span>';
 				html += '</h4>';
-				if (r.lines) html += '<div class="stats">' + escapeHTML(r.language) + ' | Lines: ' + (r.lines?r.lines:0) + ' | Code: ' + (r.code?r.code:0) + ' | Comment: ' + (r.comment?r.comment:0) + ' | Blank: ' + (r.blank?r.blank:0) + ' | Complexity: ' + (r.complexity?r.complexity:0) + '</div>';
+				if (r.lines) html += '<div class="stats">' + escapeHTML(r.language) + ' | ModTime: ' + (r.modTime?toLocalRFC3339(new Date(r.modTime)):'') + ' | Lines: ' + (r.lines?r.lines:0) + ' | Code: ' + (r.code?r.code:0) + ' | Comment: ' + (r.comment?r.comment:0) + ' | Blank: ' + (r.blank?r.blank:0) + ' | Complexity: ' + (r.complexity?r.complexity:0) + '</div>';
 				if (r.isLineMode && r.lineResults) {
 					html += '<pre>';
 					var prevLN = 0;
@@ -404,7 +426,7 @@
 						}
 						prevLN = lr.lineNumber;
 						// var num = ('    ' + lr.lineNumber).slice(-4) + ' ';
-						html += '<a target="_blank" class="lineNo" href="/file/'+escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + lr.lineNumber + '">' + lr.lineNumber + '</a>' + lr.content + '\n';
+						html += '<a class="lineNo" href="/file/'+escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '#' + lr.lineNumber + '">' + lr.lineNumber + '</a>' + lr.content + '\n';
 					}
 					html += '</pre>';
 				} else if (r.content) {

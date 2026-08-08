@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/boyter/cs/v3/pkg/common"
 	"github.com/boyter/cs/v3/pkg/ranker"
@@ -80,16 +81,22 @@ func DoSearch(ctx context.Context, cfg *Config, query string, cache *SearchCache
 	if strings.TrimSpace(cfg.Directory) != "" {
 		dir = cfg.Directory
 	}
-	if cfg.FindRoot {
-		dir = gocodewalker.FindRepositoryRoot(dir)
-	}
 
-	// Resolve to absolute path once so downstream filepath.Abs() calls
-	// (inside gitignore matching, etc.) become no-op filepath.Clean()
-	// instead of issuing an os.Getwd() syscall per file.
-	// Error only possible if Getwd fails, in which case dir is unchanged
-	// and the walker still functions with the original relative path.
-	dir, _ = filepath.Abs(dir)
+	var dirs []string
+	for tmp := range strings.SplitSeq(dir, ",") {
+		if cfg.FindRoot {
+			tmp = gocodewalker.FindRepositoryRoot(tmp)
+		}
+
+		// Resolve to absolute path once so downstream filepath.Abs() calls
+		// (inside gitignore matching, etc.) become no-op filepath.Clean()
+		// instead of issuing an os.Getwd() syscall per file.
+		// Error only possible if Getwd fails, in which case dir is unchanged
+		// and the walker still functions with the original relative path.
+		tmp, _ = filepath.Abs(tmp)
+
+		dirs = append(dirs, tmp)
+	}
 
 	fileQueue := make(chan *gocodewalker.File, 1000)
 
@@ -117,7 +124,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string, cache *SearchCache
 
 	// Set up file walker (cache miss or no cache)
 	{
-		walker := gocodewalker.NewParallelFileWalker([]string{dir}, fileQueue)
+		walker := gocodewalker.NewParallelFileWalker(dirs, fileQueue)
 		walker.AllowListExtensions = cfg.AllowListExtensions
 		walker.IgnoreIgnoreFile = cfg.IgnoreIgnoreFile
 		walker.IgnoreGitIgnore = cfg.IgnoreGitIgnore
@@ -175,7 +182,7 @@ startWorkers:
 				stats.FileCount.Add(1)
 
 				// Read file content into pooled buffer (avoids fstat + per-file alloc)
-				content, err := readFileContentBuf(f.Location, poolBuf[:maxRead])
+				content, modT, err := readFileContentBuf(f.Location, poolBuf[:maxRead])
 				if err != nil || len(content) == 0 {
 					continue
 				}
@@ -269,6 +276,7 @@ startWorkers:
 					Filename:        f.Filename,
 					Extension:       gocodewalker.GetExtension(f.Filename),
 					Location:        f.Location,
+					ModTime:         modT,
 					Content:         content,
 					ContentByteType: contentByteType,
 					Bytes:           len(content),
@@ -359,24 +367,30 @@ var bufPool sync.Pool
 // readFileContentBuf reads a file into buf, limiting to len(buf) bytes.
 // Returns the sub-slice of buf containing the file content.
 // Eliminates the fstat syscall by reading directly into the pre-sized buffer.
-func readFileContentBuf(location string, buf []byte) ([]byte, error) {
+func readFileContentBuf(location string, buf []byte) (data []byte, modT time.Time, e error) {
 	f, err := os.Open(location)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	defer f.Close()
 
+	if state, e := f.Stat(); e == nil {
+		modT = state.ModTime()
+	}
 	n, err := io.ReadFull(f, buf)
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			if n == 0 {
-				return nil, nil
+				return
 			}
-			return buf[:n], nil
+			data = buf[:n]
+			return
 		}
-		return nil, err
+		e = err
+		return
 	}
-	return buf[:n], nil
+	data = buf[:n]
+	return
 }
 
 // readFileContent reads a file, limiting to maxBytes if the file is larger.

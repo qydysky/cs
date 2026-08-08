@@ -2,6 +2,8 @@
 
 package common
 
+import "time"
+
 // Query complexity limits - stricter for MCP, relaxed for interactive modes.
 const (
 	MaxQueryCharsMCP     = 250
@@ -15,6 +17,7 @@ type FileJob struct {
 	Filename           string
 	Extension          string
 	Location           string
+	ModTime            time.Time
 	Content            []byte
 	ContentByteType    []byte // Per-byte classification from scc (code/comment/string/blank)
 	Bytes              int
