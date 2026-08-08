@@ -3,7 +3,6 @@ package search
 import (
 	"bufio"
 	"io"
-	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -119,7 +118,7 @@ func (l *Lexer) scanIdentifier() Token {
 		}
 		if isSpecialSyntaxChar(ch) {
 			// Allow '/' in colon-filter values so path:pkg/search stays as one token
-			if ch == filepath.Separator && inFilterValue {
+			if ch == '/' && inFilterValue {
 				sb.WriteRune(ch)
 				continue
 			}
