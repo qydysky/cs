@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -546,6 +547,10 @@ func StartHttpServer(cfg *Config) {
 				searchResults = append(searchResults, searchRes)
 			}
 		}
+
+		slices.SortStableFunc(searchResults, func(a, b httpSearchResult) int {
+			return strings.Compare(a.Location, b.Location)
+		})
 
 		searchData := httpSearch{
 			SearchTerm:          query,
