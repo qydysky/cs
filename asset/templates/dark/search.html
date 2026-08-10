@@ -106,7 +106,11 @@
 			border-bottom: 1px solid #333;
 		}
 		.result-item h4 { margin: 0 0 4px 0; font-size: 14px; font-weight: normal; }
-		.result-item h4 a { color: #569cd6; }
+		.result-item h4 a { 
+			-webkit-user-drag: none;
+  			user-drag: none;
+			color: #569cd6; 
+		}
 		.result-item pre {
 			margin: 8px 0 4px 0;
 			padding: 10px;
@@ -222,7 +226,7 @@
 			<div class="results-main">
 				{{- range $i, $res := .Results }}
 				<div class="result-item">
-					<h4><a href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a>{{ if .Language }} <span style="color:#808080;font-size:12px">({{ .Language }})</span>{{ end }}</h4>
+					<h4><a draggable="false" href="/file/{{ .Location }}?sp={{ .StartPos }}&ep={{ .EndPos }}">{{ .Title }}</a></h4>
 					{{ if .Lines }}<div class="stats">{{ .Language }} | ModTime: {{ .ModTime.Format "2006-01-02T15:04:05Z07:00" }} | Lines: {{ .Lines }} | Code: {{ .Code }} | Comment: {{ .Comment }} | Blank: {{ .Blank }} | Complexity: {{ .Complexity }}</div>{{ end }}
 					{{ if .IsLineMode }}<pre>{{ range .LineResults }}{{ if .Gap }}
 {{ end }}<a class="lineNo" href="/file/{{ $res.Location }}?sp={{ $res.StartPos }}&ep={{ $res.EndPos }}#{{ .LineNumber }}">{{ .LineNumber }}</a>{{ .Content }}

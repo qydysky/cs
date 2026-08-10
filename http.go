@@ -3,7 +3,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -12,11 +14,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wlynxg/chardet"
+	"github.com/wlynxg/chardet/lookup"
 
 	"github.com/boyter/gocodewalker"
 
@@ -207,13 +211,12 @@ func StartHttpServer(cfg *Config) {
 		}
 		defer f.Close()
 
-		content, err := io.ReadAll(f)
+		content, err := io.ReadAll(getDecoder(f))
 		if err != nil {
 			log.Printf("failed to read: %v", err)
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
-
 		// Clamp startPos and endPos to valid range
 		contentLen := len(content)
 		if startPos < 0 {
@@ -548,10 +551,6 @@ func StartHttpServer(cfg *Config) {
 			}
 		}
 
-		slices.SortStableFunc(searchResults, func(a, b httpSearchResult) int {
-			return strings.Compare(a.Location, b.Location)
-		})
-
 		searchData := httpSearch{
 			SearchTerm:          query,
 			SnippetSize:         snippetLength,
@@ -669,4 +668,15 @@ func tryParseInt(x string, def int) int {
 
 func makeTimestampMilli() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
+}
+
+func getDecoder(f *os.File) (reader io.Reader) {
+	breader := bufio.NewReader(f)
+	reader = breader
+	if peakBuf, e := breader.Peek(1024); e == nil || errors.Is(e, io.EOF) {
+		if enc, _ := lookup.LookupEncoding(chardet.Detect(peakBuf).Charset); enc != nil {
+			reader = enc.NewDecoder().Reader(breader)
+		}
+	}
+	return
 }

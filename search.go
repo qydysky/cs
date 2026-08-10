@@ -377,7 +377,7 @@ func readFileContentBuf(location string, buf []byte) (data []byte, modT time.Tim
 	if state, e := f.Stat(); e == nil {
 		modT = state.ModTime()
 	}
-	n, err := io.ReadFull(f, buf)
+	n, err := io.ReadFull(getDecoder(f), buf)
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			if n == 0 {
@@ -415,7 +415,7 @@ func readFileContent(location string, maxBytes int64) ([]byte, error) {
 	}
 
 	buf := make([]byte, size)
-	n, err := io.ReadFull(f, buf)
+	n, err := io.ReadFull(getDecoder(f), buf)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, err
 	}
