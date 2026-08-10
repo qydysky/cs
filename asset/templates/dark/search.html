@@ -416,7 +416,7 @@
 			for (var i = 0; i < data.results.length; i++) {
 				var r = data.results[i];
 				html += '<div class="result-item">';
-				html += '<h4><a href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
+				html += '<h4><a draggable="false" href="/file/' + escapeHTML(r.location) + '?sp=' + r.startPos + '&ep=' + r.endPos + '">' + escapeHTML(r.title) + '</a>';
 				if (r.language) html += ' <span style="color:#808080;font-size:12px">(' + escapeHTML(r.language) + ')</span>';
 				html += '</h4>';
 				if (r.lines) html += '<div class="stats">' + escapeHTML(r.language) + ' | ModTime: ' + (r.modTime?toLocalRFC3339(new Date(r.modTime)):'') + ' | Lines: ' + (r.lines?r.lines:0) + ' | Code: ' + (r.code?r.code:0) + ' | Comment: ' + (r.comment?r.comment:0) + ' | Blank: ' + (r.blank?r.blank:0) + ' | Complexity: ' + (r.complexity?r.complexity:0) + '</div>';
