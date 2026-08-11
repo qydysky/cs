@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	pp "github.com/qydysky/part/pool"
+
 	"github.com/wlynxg/chardet"
 	"github.com/wlynxg/chardet/lookup"
 
@@ -670,11 +672,22 @@ func makeTimestampMilli() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
+var decoderPool = pp.New(pp.PoolFunc[chardet.UniversalDetector]{
+	Reuse: func(ud *chardet.UniversalDetector) *chardet.UniversalDetector {
+		ud.Reset()
+		return ud
+	},
+}, -1)
+
 func getDecoder(f *os.File) (reader io.Reader) {
+	detector := decoderPool.Get()
+	defer decoderPool.Put(detector)
+
 	breader := bufio.NewReader(f)
 	reader = breader
 	if peakBuf, e := breader.Peek(1024); e == nil || errors.Is(e, io.EOF) {
-		if enc, _ := lookup.LookupEncoding(chardet.Detect(peakBuf).Charset); enc != nil {
+		detector.Feed(peakBuf)
+		if enc, _ := lookup.LookupEncoding(detector.GetResult().Charset); enc != nil {
 			reader = enc.NewDecoder().Reader(breader)
 		}
 	}
