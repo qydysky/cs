@@ -3,9 +3,7 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -19,12 +17,8 @@ import (
 	"strings"
 	"time"
 
-	pp "github.com/qydysky/part/pool"
-
-	"github.com/wlynxg/chardet"
-	"github.com/wlynxg/chardet/lookup"
-
 	"github.com/boyter/gocodewalker"
+	"github.com/wlynxg/chardet/lookup"
 
 	"github.com/boyter/cs/v3/pkg/common"
 	"github.com/boyter/cs/v3/pkg/ranker"
@@ -213,7 +207,16 @@ func StartHttpServer(cfg *Config) {
 		}
 		defer f.Close()
 
-		content, err := io.ReadAll(getDecoder(f))
+		content, err := io.ReadAll(f)
+
+		detector := decoderPool.Get()
+		defer decoderPool.Put(detector)
+		if detector.Feed(content) {
+			if enc, _ := lookup.LookupEncoding(detector.GetResult().Charset); enc != nil {
+				content, _ = enc.NewDecoder().Bytes(content)
+			}
+		}
+
 		if err != nil {
 			log.Printf("failed to read: %v", err)
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -670,26 +673,4 @@ func tryParseInt(x string, def int) int {
 
 func makeTimestampMilli() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
-}
-
-var decoderPool = pp.New(pp.PoolFunc[chardet.UniversalDetector]{
-	Reuse: func(ud *chardet.UniversalDetector) *chardet.UniversalDetector {
-		ud.Reset()
-		return ud
-	},
-}, -1)
-
-func getDecoder(f *os.File) (reader io.Reader) {
-	detector := decoderPool.Get()
-	defer decoderPool.Put(detector)
-
-	breader := bufio.NewReader(f)
-	reader = breader
-	if peakBuf, e := breader.Peek(1024); e == nil || errors.Is(e, io.EOF) {
-		detector.Feed(peakBuf)
-		if enc, _ := lookup.LookupEncoding(detector.GetResult().Charset); enc != nil {
-			reader = enc.NewDecoder().Reader(breader)
-		}
-	}
-	return
 }
