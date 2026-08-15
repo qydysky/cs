@@ -1028,7 +1028,7 @@ func (m *model) retriggerSearch() tea.Cmd {
 // tuiVimGrep re-reads a file and formats all matches as vimgrep lines.
 // Mirrors the branch structure of formatVimGrep in console.go.
 func tuiVimGrep(cfg *Config, location string, matchLocations map[string][][]int) string {
-	content, err := readFileContent(location, cfg.MaxReadSizeBytes)
+	content, _, err := readFileContent(location, cfg.MaxReadSizeBytes)
 	if err != nil {
 		return location
 	}

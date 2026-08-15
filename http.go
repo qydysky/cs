@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/boyter/gocodewalker"
+	pio "github.com/qydysky/part/io"
 	"github.com/wlynxg/chardet/lookup"
 
 	"github.com/boyter/cs/v3/pkg/common"
@@ -207,11 +208,23 @@ func StartHttpServer(cfg *Config) {
 		}
 		defer f.Close()
 
-		content, err := io.ReadAll(f)
-
 		detector := decoderPool.Get()
 		defer decoderPool.Put(detector)
-		if detector.Feed(content) {
+
+		var enc string
+		rr := pio.RWC{
+			R: func(p []byte) (n int, err error) {
+				n, err = f.Read(p)
+				if detector.Feed(p) {
+					enc = detector.GetResult().Charset
+				}
+				return
+			},
+		}
+
+		content, err := io.ReadAll(rr)
+
+		if enc != "" {
 			if enc, _ := lookup.LookupEncoding(detector.GetResult().Charset); enc != nil {
 				content, _ = enc.NewDecoder().Bytes(content)
 			}

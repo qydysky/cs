@@ -287,7 +287,7 @@ func mcpGetFileHandler(cfg *Config) server.ToolHandlerFunc {
 		}
 
 		// Read the file
-		content, err := readFileContent(absResolved, cfg.MaxReadSizeBytes)
+		content, _, err := readFileContent(absResolved, cfg.MaxReadSizeBytes)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to read file: %v", err)), nil
 		}

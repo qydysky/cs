@@ -22,6 +22,7 @@ import (
 	"github.com/boyter/cs/v3/pkg/snippet"
 	"github.com/boyter/gocodewalker"
 	"github.com/boyter/scc/v3/processor"
+	pio "github.com/qydysky/part/io"
 	pp "github.com/qydysky/part/pool"
 	"github.com/wlynxg/chardet"
 	"github.com/wlynxg/chardet/lookup"
@@ -432,17 +433,23 @@ func readFileContentBuf(location string, buf *[]byte) (data []byte, modT time.Ti
 		modT = state.ModTime()
 	}
 
-	n, err := io.ReadFull(f, *buf)
-
 	detector := decoderPool.Get()
 	defer decoderPool.Put(detector)
-	if detector.Feed(*buf) {
-		enc = detector.GetResult().Charset
+	r := pio.RWC{
+		R: func(p []byte) (n int, err error) {
+			n, err = f.Read(p)
+			if detector.Feed(p) {
+				enc = detector.GetResult().Charset
+			}
+			return
+		},
+	}
+	n, err := io.ReadFull(r, *buf)
+	if enc != "" {
 		if encoder, _ := lookup.LookupEncoding(enc); encoder != nil {
 			*buf, _ = encoder.NewDecoder().Bytes(*buf)
 		}
 	}
-
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			if n == 0 {
@@ -459,39 +466,48 @@ func readFileContentBuf(location string, buf *[]byte) (data []byte, modT time.Ti
 }
 
 // readFileContent reads a file, limiting to maxBytes if the file is larger.
-func readFileContent(location string, maxBytes int64) ([]byte, error) {
+func readFileContent(location string, maxBytes int64) (buf []byte, enc string, e error) {
 	f, err := os.Open(location)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	size := fi.Size()
 	if size == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 	if size > maxBytes {
 		size = maxBytes
 	}
 
-	buf := make([]byte, size)
-	n, err := io.ReadFull(f, buf)
+	buf = make([]byte, size)
 
 	detector := decoderPool.Get()
 	defer decoderPool.Put(detector)
-	if detector.Feed(buf) {
-		if enc, _ := lookup.LookupEncoding(detector.GetResult().Charset); enc != nil {
-			buf, _ = enc.NewDecoder().Bytes(buf)
+	r := pio.RWC{
+		R: func(p []byte) (n int, err error) {
+			n, err = f.Read(p)
+			if detector.Feed(p) {
+				enc = detector.GetResult().Charset
+			}
+			return
+		},
+	}
+	n, err := io.ReadFull(r, buf)
+	if enc != "" {
+		if encoder, _ := lookup.LookupEncoding(enc); encoder != nil {
+			buf, _ = encoder.NewDecoder().Bytes(buf)
 		}
 	}
 
 	if err != nil && err != io.ErrUnexpectedEOF {
-		return nil, err
+		return nil, enc, err
 	}
-	return buf[:n], nil
+	return buf[:n], enc, nil
 }
