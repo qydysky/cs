@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -111,7 +112,6 @@ type httpPageResult struct {
 }
 
 func StartHttpServer(cfg *Config) {
-	cache := NewSearchCache()
 	searchTmpl, err := resolveSearchTemplate(cfg)
 	if err != nil {
 		log.Fatalf("failed to load search template: %v", err)
@@ -134,6 +134,23 @@ func StartHttpServer(cfg *Config) {
 		}
 		httpBaseDirs = append(httpBaseDirs, httpBaseDir)
 	}
+
+	http.HandleFunc("/state/", func(w http.ResponseWriter, r *http.Request) {
+		if name, found := strings.CutPrefix(r.URL.Path, "/state/"); found && name != "" {
+			switch name {
+			case "cmdline":
+				pprof.Cmdline(w, r)
+			case "profile":
+				pprof.Profile(w, r)
+			case "trace":
+				pprof.Trace(w, r)
+			default:
+				pprof.Handler(name).ServeHTTP(w, r)
+			}
+			return
+		}
+		pprof.Index(w, r)
+	})
 
 	http.HandleFunc("/file/raw/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%v %v", r.RemoteAddr, r.URL.String())
@@ -224,7 +241,7 @@ func StartHttpServer(cfg *Config) {
 			}
 		}
 
-		if enc != "US-ASCII" && !strings.HasPrefix(enc, "UTF") {
+		if useEncoder(enc) {
 			if enc, _ := lookup.LookupEncoding(enc); enc != nil {
 				(*poolBuf), _ = enc.NewDecoder().Bytes(*poolBuf)
 			}
@@ -362,7 +379,7 @@ func StartHttpServer(cfg *Config) {
 				rankerParam = "structural"
 			}
 
-			ch, stats, searchErr := DoSearch(r.Context(), &searchCfg, query, cache)
+			ch, stats, searchErr := DoSearch(r.Context(), &searchCfg, query)
 			if searchErr != nil {
 				err := searchTmpl.Execute(w, httpSearch{
 					SearchTerm:  query,
@@ -382,6 +399,12 @@ func StartHttpServer(cfg *Config) {
 			for fj := range ch {
 				results = append(results, fj)
 			}
+
+			defer func(tmp []*common.FileJob) {
+				for _, v := range tmp {
+					readFilePool.Put(v.ContentP)
+				}
+			}(results)
 
 			processedFileCount = stats.TextFileCount.Load()
 			testIntent := ranker.HasTestIntent(strings.Fields(query))

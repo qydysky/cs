@@ -60,49 +60,48 @@ func ComputeMatchHash(fj *common.FileJob) string {
 // input is already sorted by score descending), and populates DuplicateCount
 // and DuplicateLocations on the representative.
 func DeduplicateResults(results []*common.FileJob) []*common.FileJob {
-	if len(results) == 0 {
-		return results
+	r := NewDeduplicateResultsT()
+	for i := 0; i < len(results); i++ {
+		r.Add(results[i])
 	}
+	return r.Fin()
+}
 
-	// Compute hashes for any results that don't have one yet
-	for _, fj := range results {
-		if fj.MatchHash == "" {
-			fj.MatchHash = ComputeMatchHash(fj)
-		}
+type group struct {
+	representative *common.FileJob
+	locations      []string
+}
+
+type DeduplicateResultsT struct {
+	seen map[string]*group
+}
+
+func NewDeduplicateResultsT() *DeduplicateResultsT {
+	return &DeduplicateResultsT{seen: map[string]*group{}}
+}
+
+func (t *DeduplicateResultsT) Add(fj *common.FileJob) {
+	if fj.MatchHash == "" {
+		fj.MatchHash = ComputeMatchHash(fj)
 	}
-
-	type group struct {
-		representative *common.FileJob
-		locations      []string
+	hash := fj.MatchHash
+	if hash == "" {
+		// No hash means no match content - keep as-is (unique)
+		hash = "[[no-hash]]:" + fj.Location
 	}
-
-	seen := map[string]*group{}
-	var order []string // preserve insertion order
-
-	for _, fj := range results {
-		hash := fj.MatchHash
-		if hash == "" {
-			// No hash means no match content - keep as-is (unique)
-			hash = "[[no-hash]]:" + fj.Location
-		}
-
-		if g, ok := seen[hash]; ok {
-			g.locations = append(g.locations, fj.Location)
-		} else {
-			seen[hash] = &group{
-				representative: fj,
-			}
-			order = append(order, hash)
-		}
-	}
-
-	out := make([]*common.FileJob, 0, len(order))
-	for _, hash := range order {
-		g := seen[hash]
+	if g, ok := t.seen[hash]; ok {
+		g.locations = append(g.locations, fj.Location)
 		g.representative.DuplicateCount = len(g.locations)
 		g.representative.DuplicateLocations = g.locations
+	} else {
+		t.seen[hash] = &group{representative: fj}
+	}
+}
+
+func (t *DeduplicateResultsT) Fin() []*common.FileJob {
+	out := make([]*common.FileJob, 0, len(t.seen))
+	for _, g := range t.seen {
 		out = append(out, g.representative)
 	}
-
 	return out
 }

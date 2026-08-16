@@ -46,8 +46,6 @@ type mcpFileResult struct {
 // StartMCPServer starts an MCP server over stdio, exposing a "search" tool
 // that uses the same DoSearch pipeline as console and HTTP modes.
 func StartMCPServer(cfg *Config) {
-	cache := NewSearchCache()
-
 	mcpServer := server.NewMCPServer(
 		"codespelunker",
 		Version,
@@ -620,7 +618,7 @@ func mcpSearchHandler(cfg *Config, cache *SearchCache) server.ToolHandlerFunc {
 		}
 
 		// Run search
-		ch, stats, searchErr := DoSearch(ctx, &searchCfg, query, cache)
+		ch, stats, searchErr := DoSearch(ctx, &searchCfg, query)
 		if searchErr != nil {
 			return mcp.NewToolResultError(searchErr.Error()), nil
 		}

@@ -18,6 +18,7 @@ type FileJob struct {
 	Extension          string
 	Location           string
 	ModTime            time.Time
+	ContentP           *[]byte
 	Content            []byte
 	ContentByteType    []byte // Per-byte classification from scc (code/comment/string/blank)
 	Bytes              int

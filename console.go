@@ -23,7 +23,7 @@ func ConsoleSearch(cfg *Config) {
 	query := strings.Join(cfg.SearchString, " ")
 
 	ctx := context.Background()
-	ch, stats, err := DoSearch(ctx, cfg, query, nil)
+	ch, stats, err := DoSearch(ctx, cfg, query)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

@@ -33,7 +33,6 @@ func (t *LasyRead[T]) Read() (read bool) {
 }
 
 func (t *LasyRead[T]) Arg() T {
-	t.Read()
 	return t.arg
 }
 

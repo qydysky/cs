@@ -23,6 +23,7 @@ type SearchEngine struct {
 }
 
 type SearchFile struct {
+	BufP *[]byte
 	Enc  string
 	ModT time.Time
 	Err  error

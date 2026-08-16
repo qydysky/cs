@@ -21,7 +21,6 @@ import (
 	"github.com/boyter/cs/v3/pkg/snippet"
 	"github.com/boyter/gocodewalker"
 	"github.com/boyter/scc/v3/processor"
-	pfc "github.com/qydysky/part/funcCtrl"
 	pp "github.com/qydysky/part/pool"
 	"github.com/wlynxg/chardet"
 	"github.com/wlynxg/chardet/lookup"
@@ -36,27 +35,24 @@ type SearchStats struct {
 }
 
 var (
-	readFileSize atomic.Int64
 	readFilePool = pp.New(pp.PoolFunc[[]byte]{
 		New: func() *[]byte {
-			var buf = make([]byte, int(readFileSize.Load()))
-			return &buf
+			return &[]byte{}
 		},
 		Reuse: func(b *[]byte) *[]byte {
 			clear(*b)
 			return b
 		},
-	}, -1)
+	}, 1000)
+	cache = NewSearchCache()
 )
 
 // DoSearch runs the search pipeline and returns a channel of matched FileJob results
 // plus stats that are populated as the search runs.
 // If cache is non-nil, it will attempt to use cached file locations from a previous
 // prefix query instead of walking the filesystem, and will store results for future use.
-func DoSearch(ctx context.Context, cfg *Config, query string, cache *SearchCache) (<-chan *common.FileJob, *SearchStats, error) {
-	readFileSize.CompareAndSwap(0, cfg.MaxReadSizeBytes)
-
-	out := make(chan *common.FileJob, 100)
+func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.FileJob, *SearchStats, error) {
+	out := make(chan *common.FileJob, 1000)
 	stats := &SearchStats{}
 
 	var (
@@ -185,27 +181,23 @@ func DoSearch(ctx context.Context, cfg *Config, query string, cache *SearchCache
 	// Try cache hit path: feed cached file locations instead of walking
 	var walkerToTerminate *gocodewalker.FileWalker
 	cacheQuery := cfg.ContentFilterCachePrefix() + query
-	if cache != nil {
-		if cachedFiles, ok := cache.FindPrefixFiles(cfg.AllowListExtensions, cacheQuery); ok {
-			go func() {
-				defer close(fileQueue)
-				for _, loc := range cachedFiles {
-					select {
-					case <-ctx.Done():
-						return
-					case fileQueue <- &gocodewalker.File{
-						Location: loc,
-						Filename: filepath.Base(loc),
-					}:
-					}
+	if cachedFiles, ok := cache.FindPrefixFiles(cfg.AllowListExtensions, cacheQuery); ok {
+		go func() {
+			defer close(fileQueue)
+			for _, loc := range cachedFiles {
+				select {
+				case <-ctx.Done():
+					return
+				case fileQueue <- &gocodewalker.File{
+					Location: loc,
+					Filename: filepath.Base(loc),
+				}:
 				}
-			}()
-			goto startWorkers
-		}
-	}
-
-	// Set up file walker (cache miss or no cache)
-	{
+			}
+		}()
+		// goto startWorkers
+	} else {
+		// Set up file walker (cache miss or no cache)
 		walker := gocodewalker.NewParallelFileWalker(dirs, fileQueue)
 		walker.AllowListExtensions = cfg.AllowListExtensions
 		walker.IgnoreIgnoreFile = cfg.IgnoreIgnoreFile
@@ -218,7 +210,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string, cache *SearchCache
 		go func() { _ = walker.Start() }()
 	}
 
-startWorkers:
+	// startWorkers:
 	// Ensure walker is terminated on context cancellation
 	searchDone := make(chan struct{})
 	if walkerToTerminate != nil {
@@ -250,12 +242,12 @@ startWorkers:
 		// 	*poolBuf = append(*poolBuf, make([]byte, diff)...)
 		// }
 		// defer bufPool.Put(poolBuf)
-		var bc = pfc.NewBlockFuncN(1)
+		// var bc = pfc.NewBlockFuncN(1)
 
 		for f := range fileQueue {
-			ul := bc.Block()
-			go func() {
-				defer ul()
+			// ul := bc.Block()
+			func() {
+				// defer ul()
 
 				select {
 				case <-ctx.Done():
@@ -265,7 +257,18 @@ startWorkers:
 
 				// Per-worker pooled buffer, reused across files
 				var poolBuf = readFilePool.Get()
-				defer readFilePool.Put(poolBuf)
+				fileP, e := os.Open(f.Location)
+				if e != nil {
+					readFilePool.Put(poolBuf)
+					return
+				} else if info, e := fileP.Stat(); e != nil {
+					readFilePool.Put(poolBuf)
+					return
+				} else if diff := min(info.Size(), cfg.MaxReadSizeBytes) - int64(cap(*poolBuf)); diff > 0 {
+					*poolBuf = append(*poolBuf, make([]byte, diff)...)
+				}
+				fileP.Close()
+				// defer readFilePool.Put(poolBuf)
 
 				// lasy read
 				lr := search.NewLasyRead(lasyReadF, f.Location, *poolBuf)
@@ -273,6 +276,7 @@ startWorkers:
 				// Evaluate query AST against file content
 				matched, matchLocations := search.EvaluateFile(ast, lr, f.Filename, f.Location, cfg.CaseSensitive)
 				if !matched || err != nil {
+					readFilePool.Put(poolBuf)
 					return
 				}
 
@@ -281,25 +285,36 @@ startWorkers:
 				arg := lr.Arg()
 
 				if arg.Err != nil {
+					readFilePool.Put(poolBuf)
 					return
+				}
+
+				// encoder is used, new buf allocs
+				if useEncoder(arg.Enc) {
+					readFilePool.Put(poolBuf)
 				}
 
 				content := lr.Byte()
 
-				// File matched — copy content out of the pooled buffer so it can
-				// be safely stored in FileJob while the pool buffer is reused.
-				// This must happen before post-eval filters (lang, content-type,
-				// declarations) since they read content and the pool may reclaim
-				// the buffer. The heavy filter (EvaluateFile) already passed, so
-				// few files reach here only to be rejected by later filters.
-				ownedContent := make([]byte, len(content))
-				copy(ownedContent, content)
-				content = ownedContent
+				// if !useEncoder(arg.Enc) {
+				// 	// File matched — copy content out of the pooled buffer so it can
+				// 	// be safely stored in FileJob while the pool buffer is reused.
+				// 	// This must happen before post-eval filters (lang, content-type,
+				// 	// declarations) since they read content and the pool may reclaim
+				// 	// the buffer. The heavy filter (EvaluateFile) already passed, so
+				// 	// few files reach here only to be rejected by later filters.
+				// 	ownedContent := make([]byte, len(content))
+				// 	copy(ownedContent, content)
+				// 	content = ownedContent
+				// } else {
+				// 	// encoder is used, new buf allocs
+				// }
 
 				lang, sccLines, sccCode, sccComment, sccBlank, sccComplexity, contentByteType := fileCodeStats(f.Filename, content)
 
 				// Post-evaluate metadata filters (lang, complexity) now that metadata is available
 				if !search.PostEvalMetadataFilters(ast, lang, sccComplexity) {
+					readFilePool.Put(poolBuf)
 					return
 				}
 
@@ -308,6 +323,7 @@ startWorkers:
 					var survived bool
 					matchLocations, survived = filterMatchLocations(matchLocations, contentByteType, cfg)
 					if !survived {
+						readFilePool.Put(poolBuf)
 						return
 					}
 				}
@@ -330,6 +346,7 @@ startWorkers:
 						}
 					}
 					if !anySurvived {
+						readFilePool.Put(poolBuf)
 						return
 					}
 				}
@@ -348,6 +365,7 @@ startWorkers:
 					Extension:       gocodewalker.GetExtension(f.Filename),
 					Location:        f.Location,
 					ModTime:         arg.ModT,
+					ContentP:        poolBuf,
 					Content:         content,
 					ContentByteType: contentByteType,
 					Bytes:           len(content),
@@ -363,12 +381,13 @@ startWorkers:
 				select {
 				case out <- fj:
 				case <-ctx.Done():
+					readFilePool.Put(poolBuf)
 					return
 				}
 			}()
 		}
 
-		bc.BlockAll()()
+		// bc.BlockAll()()
 
 		close(out)
 		close(searchDone)
@@ -468,7 +487,7 @@ func readFileContentBuf(location string, buf []byte) (data []byte, modT time.Tim
 			enc = detector.GetResult().Charset
 		}
 	}
-	if enc != "US-ASCII" && !strings.HasPrefix(enc, "UTF") {
+	if useEncoder(enc) {
 		if encoder, _ := lookup.LookupEncoding(enc); encoder != nil {
 			buf, _ = encoder.NewDecoder().Bytes(buf)
 		}
@@ -481,7 +500,6 @@ func readFileContentBuf(location string, buf []byte) (data []byte, modT time.Tim
 			data = (buf)[:n]
 			return
 		}
-		e = err
 		return
 	}
 	data = (buf)[:n]
@@ -521,7 +539,7 @@ func readFileContent(location string, maxBytes int64) (buf []byte, enc string, e
 			enc = detector.GetResult().Charset
 		}
 	}
-	if enc != "US-ASCII" && !strings.HasPrefix(enc, "UTF") {
+	if useEncoder(enc) {
 		if encoder, _ := lookup.LookupEncoding(enc); encoder != nil {
 			buf, _ = encoder.NewDecoder().Bytes(buf)
 		}
@@ -531,4 +549,8 @@ func readFileContent(location string, maxBytes int64) (buf []byte, enc string, e
 		return nil, enc, err
 	}
 	return buf[:n], enc, nil
+}
+
+func useEncoder(enc string) bool {
+	return enc != "US-ASCII" && !strings.HasPrefix(enc, "UTF")
 }
