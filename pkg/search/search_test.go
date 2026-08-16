@@ -956,7 +956,7 @@ func TestEvaluateFile(t *testing.T) {
 	for _, tc := range fileFilterCases {
 		t.Run(tc.name, func(t *testing.T) {
 			node := parse(tc.query)
-			matched, locations := EvaluateFile(node, NewNoLasyRead([]byte(tc.content)), tc.filename, tc.location, tc.caseSensitive)
+			matched, locations := EvaluateFile(node, NewNoLasyRead[SearchFile]([]byte(tc.content)), tc.filename, tc.location, tc.caseSensitive)
 
 			if matched != tc.wantMatch {
 				t.Errorf("EvaluateFile() matched = %v, want %v", matched, tc.wantMatch)
@@ -975,7 +975,7 @@ func TestEvaluateFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			node := parse(tc.query)
-			matched, locations := EvaluateFile(node, NewNoLasyRead([]byte(tc.content)), "test.txt", "test.txt", tc.caseSensitive)
+			matched, locations := EvaluateFile(node, NewNoLasyRead[SearchFile]([]byte(tc.content)), "test.txt", "test.txt", tc.caseSensitive)
 
 			if matched != tc.wantMatch {
 				t.Errorf("EvaluateFile() matched = %v, want %v", matched, tc.wantMatch)
@@ -1204,7 +1204,7 @@ func TestFuzzyNodeEvaluate(t *testing.T) {
 func TestFuzzyNodeEvaluateFile(t *testing.T) {
 	t.Run("Exact match", func(t *testing.T) {
 		node := &FuzzyNode{Value: "hello", Distance: 1}
-		matched, locs := EvaluateFile(node, NewNoLasyRead([]byte("hello world")), "test.txt", "test.txt", false)
+		matched, locs := EvaluateFile(node, NewNoLasyRead[SearchFile]([]byte("hello world")), "test.txt", "test.txt", false)
 		if !matched {
 			t.Error("FuzzyNode in EvaluateFile should match 'hello' in 'hello world'")
 		}
@@ -1215,7 +1215,7 @@ func TestFuzzyNodeEvaluateFile(t *testing.T) {
 
 	t.Run("Fuzzy match", func(t *testing.T) {
 		node := &FuzzyNode{Value: "hallo", Distance: 1}
-		matched, locs := EvaluateFile(node, NewNoLasyRead([]byte("hello world")), "test.txt", "test.txt", false)
+		matched, locs := EvaluateFile(node, NewNoLasyRead[SearchFile]([]byte("hello world")), "test.txt", "test.txt", false)
 		if !matched {
 			t.Error("FuzzyNode should match 'hello' for query 'hallo~1'")
 		}
@@ -1226,7 +1226,7 @@ func TestFuzzyNodeEvaluateFile(t *testing.T) {
 
 	t.Run("No match", func(t *testing.T) {
 		node := &FuzzyNode{Value: "zzzzz", Distance: 1}
-		matched, _ := EvaluateFile(node, NewNoLasyRead([]byte("hello world")), "test.txt", "test.txt", false)
+		matched, _ := EvaluateFile(node, NewNoLasyRead[SearchFile]([]byte("hello world")), "test.txt", "test.txt", false)
 		if matched {
 			t.Error("FuzzyNode should not match 'zzzzz~1' in 'hello world'")
 		}
@@ -1320,7 +1320,7 @@ func TestInvalidRegexSearch(t *testing.T) {
 
 func TestInvalidRegexEvaluateFile(t *testing.T) {
 	node := &RegexNode{Pattern: "[invalid"}
-	matched, _ := EvaluateFile(node, NewNoLasyRead([]byte("hello world")), "test.txt", "test.txt", false)
+	matched, _ := EvaluateFile(node, NewNoLasyRead[SearchFile]([]byte("hello world")), "test.txt", "test.txt", false)
 	if matched {
 		t.Error("EvaluateFile with invalid regex should return false")
 	}
@@ -1609,7 +1609,7 @@ func TestTransformerExpanded(t *testing.T) {
 // --- EvaluateFile edge cases ---
 
 func TestEvaluateFileNilNode(t *testing.T) {
-	matched, locs := EvaluateFile(nil, NewNoLasyRead([]byte("hello")), "test.txt", "test.txt", false)
+	matched, locs := EvaluateFile(nil, NewNoLasyRead[SearchFile]([]byte("hello")), "test.txt", "test.txt", false)
 	if !matched {
 		t.Error("EvaluateFile(nil) should return true")
 	}
@@ -1806,7 +1806,7 @@ func TestFullPipelinePerFile(t *testing.T) {
 			ast := pipeline(tc.query)
 
 			// Phase 1: per-file evaluation
-			matched, _ := EvaluateFile(ast, NewNoLasyRead([]byte(tc.content)), tc.filename, tc.location, false)
+			matched, _ := EvaluateFile(ast, NewNoLasyRead[SearchFile]([]byte(tc.content)), tc.filename, tc.location, false)
 
 			// Phase 2: metadata filter check
 			if matched {
@@ -1907,7 +1907,7 @@ func TestExclamationInQuery(t *testing.T) {
 	t.Run("EvaluateFile generates match locations for terms with !", func(t *testing.T) {
 		ast := parseQuery("live! 7.1")
 		content := []byte("Sound Blaster Live! 7.1 Channel")
-		matched, locs := EvaluateFile(ast, NewNoLasyRead(content), "test.txt", "test.txt", false)
+		matched, locs := EvaluateFile(ast, NewNoLasyRead[SearchFile](content), "test.txt", "test.txt", false)
 		if !matched {
 			t.Fatal("expected match")
 		}

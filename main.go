@@ -133,6 +133,16 @@ func main() {
 				}
 			}
 
+			go func() {
+				cl := time.NewTicker(time.Second)
+				defer cl.Stop()
+				for {
+					dstate := decoderPool.State()
+					fstate := readFilePool.State()
+					fmt.Printf("%v d:(%d/%d %8.2f/s) f:(%d/%d %8.2f/s)\t\r", (<-cl.C).Format(time.DateTime), dstate.Inuse, dstate.Sum, dstate.GetPerSec, fstate.Inuse, fstate.Sum, fstate.GetPerSec)
+				}
+			}()
+
 			if cfg.MCPServer {
 				if cfg.GitSync {
 					stopSync := startGitSync(&cfg)

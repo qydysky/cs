@@ -5,6 +5,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	str "github.com/boyter/go-string"
 )
@@ -19,6 +20,12 @@ type FilterHandler func(op string, val interface{}, doc *Document) bool
 type SearchEngine struct {
 	documents      []*Document
 	filterHandlers map[string]FilterHandler
+}
+
+type SearchFile struct {
+	Enc  string
+	ModT time.Time
+	Err  error
 }
 
 // NewSearchEngine creates a new engine and initializes it.
@@ -172,7 +179,7 @@ func (se *SearchEngine) evaluate(node Node, docs []*Document, caseSensitive bool
 // It returns whether the file matches and a map of term → match locations.
 // File/extension filters are evaluated against the filename; other filters
 // (lang, complexity) pass through as true since metadata is not available.
-func EvaluateFile(node Node, lasyRead *LasyRead, filename string, location string, caseSensitive bool) (bool, map[string][][]int) {
+func EvaluateFile(node Node, lasyRead *LasyRead[SearchFile], filename string, location string, caseSensitive bool) (bool, map[string][][]int) {
 	if node == nil {
 		return true, nil
 	}
@@ -288,7 +295,7 @@ func isMetadataOnlySubtree(node Node) bool {
 	}
 }
 
-func evalFile(node Node, lasyRead *LasyRead, filename string, location string, caseSensitive bool, locations map[string][][]int) bool {
+func evalFile(node Node, lasyRead *LasyRead[SearchFile], filename string, location string, caseSensitive bool, locations map[string][][]int) bool {
 	if node == nil {
 		return true
 	}

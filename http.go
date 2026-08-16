@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -18,12 +19,12 @@ import (
 	"time"
 
 	"github.com/boyter/gocodewalker"
-	pio "github.com/qydysky/part/io"
 	"github.com/wlynxg/chardet/lookup"
 
 	"github.com/boyter/cs/v3/pkg/common"
 	"github.com/boyter/cs/v3/pkg/ranker"
 	"github.com/boyter/cs/v3/pkg/snippet"
+	pu "github.com/qydysky/part/unsafe"
 )
 
 // HTTP template types — prefixed with "http" to avoid collision with TUI's searchResult.
@@ -212,31 +213,30 @@ func StartHttpServer(cfg *Config) {
 		defer decoderPool.Put(detector)
 
 		var enc string
-		rr := pio.RWC{
-			R: func(p []byte) (n int, err error) {
-				n, err = f.Read(p)
-				if detector.Feed(p) {
-					enc = detector.GetResult().Charset
-				}
-				return
-			},
-		}
 
-		content, err := io.ReadAll(rr)
+		var poolBuf = readFilePool.Get()
+		defer readFilePool.Put(poolBuf)
 
-		if enc != "" {
-			if enc, _ := lookup.LookupEncoding(detector.GetResult().Charset); enc != nil {
-				content, _ = enc.NewDecoder().Bytes(content)
+		for tn, n := 0, 0; err == nil && n < cap(*poolBuf); n += tn {
+			tn, err = f.Read((*poolBuf)[n:min(n+1024, cap(*poolBuf))])
+			if detector.Feed((*poolBuf)[n : n+tn]) {
+				enc = detector.GetResult().Charset
 			}
 		}
 
-		if err != nil {
+		if enc != "US-ASCII" && !strings.HasPrefix(enc, "UTF") {
+			if enc, _ := lookup.LookupEncoding(enc); enc != nil {
+				(*poolBuf), _ = enc.NewDecoder().Bytes(*poolBuf)
+			}
+		}
+
+		if err != nil && !errors.Is(err, io.EOF) {
 			log.Printf("failed to read: %v", err)
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
 		// Clamp startPos and endPos to valid range
-		contentLen := len(content)
+		contentLen := len(*poolBuf)
 		if startPos < 0 {
 			startPos = 0
 		} else if startPos > contentLen {
@@ -251,10 +251,10 @@ func StartHttpServer(cfg *Config) {
 			endPos = startPos
 		}
 
-		coloredContent := RenderHTMLLine(string(content), [][]int{{startPos, endPos}}, snippet.IsProseFile(gocodewalker.GetExtension(filepath.Base(path))))
+		coloredContent := RenderHTMLLine(pu.B2S(*poolBuf), [][]int{{startPos, endPos}}, snippet.IsProseFile(gocodewalker.GetExtension(filepath.Base(path))))
 		coloredContent = strings.Replace(coloredContent, "<strong>", fmt.Sprintf(`<strong id="%d">`, startPos), 1)
 
-		lang, sccLines, sccCode, sccComment, sccBlank, sccComplexity, _ := fileCodeStats(filepath.Base(path), content)
+		lang, sccLines, sccCode, sccComment, sccBlank, sccComplexity, _ := fileCodeStats(filepath.Base(path), (*poolBuf))
 
 		display := httpFileDisplay{
 			Location:            path,

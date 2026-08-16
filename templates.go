@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+
+	pu "github.com/qydysky/part/unsafe"
 )
 
 //go:embed asset/templates/bare/*.html asset/templates/dark/*.html asset/templates/light/*.html
@@ -45,7 +47,7 @@ func resolveDisplayTemplate(cfg *Config) (*template.Template, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading custom display template %q: %w", cfg.DisplayTemplate, err)
 		}
-		return template.New("display").Parse(string(data))
+		return template.New("display").Parse(pu.B2S(data))
 	}
 
 	if !isValidStyle(cfg.TemplateStyle) {
@@ -57,7 +59,7 @@ func resolveDisplayTemplate(cfg *Config) (*template.Template, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading embedded display template for style %q: %w", cfg.TemplateStyle, err)
 	}
-	return template.New("display").Parse(string(data))
+	return template.New("display").Parse(pu.B2S(data))
 }
 
 func isValidStyle(style string) bool {
