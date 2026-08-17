@@ -5,12 +5,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 )
 
@@ -134,18 +132,6 @@ func main() {
 					os.Exit(1)
 				}
 			}
-
-			go func() {
-				cl := time.NewTicker(time.Second)
-				defer cl.Stop()
-				var m = &runtime.MemStats{}
-				for {
-					dstate := decoderPool.State()
-					fstate := readFilePool.State()
-					runtime.ReadMemStats(m)
-					fmt.Printf("\033[K%v d:(%d/%d/%d %.2f/s) f:(%d/%d/%d %.2f/s) mem(%v)\r", (<-cl.C).Format(time.DateTime), dstate.Inuse, dstate.Sum, dstate.Allos, dstate.GetPerSec, fstate.Inuse, fstate.Sum, fstate.Allos, fstate.GetPerSec, humanize.Bytes(m.StackInuse+m.HeapInuse))
-				}
-			}()
 
 			if cfg.MCPServer {
 				if cfg.GitSync {

@@ -20,11 +20,13 @@ import (
 	"time"
 
 	"github.com/boyter/gocodewalker"
+	"github.com/dustin/go-humanize"
 	"github.com/wlynxg/chardet/lookup"
 
 	"github.com/boyter/cs/v3/pkg/common"
 	"github.com/boyter/cs/v3/pkg/ranker"
 	"github.com/boyter/cs/v3/pkg/snippet"
+	pp "github.com/qydysky/part/pool"
 	pu "github.com/qydysky/part/unsafe"
 )
 
@@ -136,7 +138,31 @@ func StartHttpServer(cfg *Config) {
 	}
 
 	http.HandleFunc("/state/", func(w http.ResponseWriter, r *http.Request) {
-		if name, found := strings.CutPrefix(r.URL.Path, "/state/"); found && name != "" {
+		type stateS struct {
+			mem *runtime.MemStats
+			Sys struct {
+				MemInuse string
+				GCCPUFraction float64
+			}
+			Decoder pp.BufState
+			FileBuf pp.BufState
+		}
+		var m = stateS{
+			mem:     &runtime.MemStats{},
+			Decoder: decoderPool.State(),
+			FileBuf: readFilePool.State(),
+		}
+		runtime.ReadMemStats(m.mem)
+		m.Sys.MemInuse = humanize.Bytes(m.mem.StackInuse + m.mem.HeapInuse)
+		m.Sys.GCCPUFraction = m.mem.GCCPUFraction
+
+		data, _ := json.Marshal(m)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	})
+
+	http.HandleFunc("/debug/", func(w http.ResponseWriter, r *http.Request) {
+		if name, found := strings.CutPrefix(r.URL.Path, "/debug/"); found && name != "" {
 			switch name {
 			case "cmdline":
 				pprof.Cmdline(w, r)
@@ -144,6 +170,8 @@ func StartHttpServer(cfg *Config) {
 				pprof.Profile(w, r)
 			case "trace":
 				pprof.Trace(w, r)
+			case "symbol":
+				pprof.Symbol(w, r)
 			default:
 				pprof.Handler(name).ServeHTTP(w, r)
 			}

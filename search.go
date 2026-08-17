@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -224,10 +223,6 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 		}()
 	}
 
-	// Track matched file locations for cache population
-	var matchedMu sync.Mutex
-	var matchedLocations []string
-
 	// Fan out workers to read and search files in parallel
 	// maxRead := cfg.MaxReadSizeBytes
 	// var wg sync.WaitGroup
@@ -235,6 +230,10 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 	// }
 
 	go func() {
+		// Track matched file locations for cache population
+		// var matchedMu sync.Mutex
+		var matchedLocations []string
+
 		// if v := bufPool.Get(); v != nil {
 		// 	poolBuf = v.([]byte)
 		// }
@@ -352,15 +351,19 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 				}
 
 				// Track matched file location for cache
-				if cache != nil {
-					matchedMu.Lock()
-					matchedLocations = append(matchedLocations, f.Location)
-					matchedMu.Unlock()
-				}
+				// if cache != nil {
+				// matchedMu.Lock()
+				matchedLocations = append(matchedLocations, f.Location)
+				// matchedMu.Unlock()
+				// }
 
 				snippet.AddPhraseMatchLocations(content, strings.Trim(query, "\""), matchLocations)
 
-				fj := &common.FileJob{
+				select {
+				case <-ctx.Done():
+					readFilePool.Put(poolBuf)
+					return
+				case out <- &common.FileJob{
 					Filename:        f.Filename,
 					Extension:       gocodewalker.GetExtension(f.Filename),
 					Location:        f.Location,
@@ -376,13 +379,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 					Comment:         sccComment,
 					Blank:           sccBlank,
 					Complexity:      sccComplexity,
-				}
-
-				select {
-				case out <- fj:
-				case <-ctx.Done():
-					readFilePool.Put(poolBuf)
-					return
+				}:
 				}
 			}()
 		}
