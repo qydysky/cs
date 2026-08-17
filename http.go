@@ -257,21 +257,31 @@ func StartHttpServer(cfg *Config) {
 		detector := decoderPool.Get()
 		defer decoderPool.Put(detector)
 
-		var enc string
+		var (
+			enc  string
+			modT time.Time
+		)
 
-		var poolBuf = readFilePool.Get()
-		defer readFilePool.Put(poolBuf)
+		var buf = readFilePool.Get()
+		defer readFilePool.Put(buf)
 
-		for tn, n := 0, 0; err == nil && n < cap(*poolBuf); n += tn {
-			tn, err = f.Read((*poolBuf)[n:min(n+1024, cap(*poolBuf))])
-			if detector.Feed((*poolBuf)[n : n+tn]) {
+		if state, e := f.Stat(); e == nil {
+			modT = state.ModTime()
+			if diff := state.Size() - int64(cap(*buf)); diff > 0 {
+				*buf = append(*buf, make([]byte, diff)...)
+			}
+		}
+
+		for tn, n := 0, 0; err == nil && n < cap(*buf); n += tn {
+			tn, err = f.Read((*buf)[n:min(n+1024, cap(*buf))])
+			if detector.Feed((*buf)[n : n+tn]) {
 				enc = detector.GetResult().Charset
 			}
 		}
 
 		if useEncoder(enc) {
 			if enc, _ := lookup.LookupEncoding(enc); enc != nil {
-				(*poolBuf), _ = enc.NewDecoder().Bytes(*poolBuf)
+				(*buf), _ = enc.NewDecoder().Bytes(*buf)
 			}
 		}
 
@@ -281,7 +291,7 @@ func StartHttpServer(cfg *Config) {
 			return
 		}
 		// Clamp startPos and endPos to valid range
-		contentLen := len(*poolBuf)
+		contentLen := len(*buf)
 		if startPos < 0 {
 			startPos = 0
 		} else if startPos > contentLen {
@@ -296,10 +306,10 @@ func StartHttpServer(cfg *Config) {
 			endPos = startPos
 		}
 
-		coloredContent := RenderHTMLLine(pu.B2S(*poolBuf), [][]int{{startPos, endPos}}, snippet.IsProseFile(gocodewalker.GetExtension(filepath.Base(path))))
+		coloredContent := RenderHTMLLine(pu.B2S(*buf), [][]int{{startPos, endPos}}, snippet.IsProseFile(gocodewalker.GetExtension(filepath.Base(path))))
 		coloredContent = strings.Replace(coloredContent, "<strong>", fmt.Sprintf(`<strong id="%d">`, startPos), 1)
 
-		lang, sccLines, sccCode, sccComment, sccBlank, sccComplexity, _ := fileCodeStats(filepath.Base(path), (*poolBuf))
+		lang, sccLines, sccCode, sccComment, sccBlank, sccComplexity, _ := fileCodeStats(filepath.Base(path), (*buf))
 
 		display := httpFileDisplay{
 			Location:            path,
@@ -311,14 +321,11 @@ func StartHttpServer(cfg *Config) {
 			Comment:             sccComment,
 			Blank:               sccBlank,
 			Complexity:          sccComplexity,
+			ModTime:             modT,
 		}
 
 		if runtime.GOOS == `windows` {
 			display.Location = strings.ReplaceAll(display.Location, "\\", "/")
-		}
-
-		if state, e := f.Stat(); e == nil {
-			display.ModTime = state.ModTime()
 		}
 
 		err = displayTmpl.Execute(w, display)

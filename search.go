@@ -471,7 +471,7 @@ func readFileContentBuf(location string, maxRead int64) (buf *[]byte, data []byt
 
 	if state, e := f.Stat(); e == nil {
 		modT = state.ModTime()
-		if diff := min(state.Size(), maxRead) - int64(cap(*buf)); diff > 0 {
+		if diff := state.Size() - int64(cap(*buf)); diff > 0 {
 			*buf = append(*buf, make([]byte, diff)...)
 		}
 	}
