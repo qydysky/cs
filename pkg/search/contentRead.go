@@ -6,7 +6,7 @@ import (
 )
 
 type LasyRead[T any] struct {
-	readF  func(path string, tmpBuf []byte) ([]byte, T)
+	readF  func(path string) ([]byte, T)
 	path   string
 	readed atomic.Bool
 	arg    T
@@ -14,8 +14,8 @@ type LasyRead[T any] struct {
 	bufS   string
 }
 
-func NewLasyRead[T any](ifNeedReadFunc func(path string, content []byte) ([]byte, T), path string, content []byte) *LasyRead[T] {
-	return &LasyRead[T]{readF: ifNeedReadFunc, path: path, buf: content}
+func NewLasyRead[T any](ifNeedReadFunc func(path string) ([]byte, T), path string) *LasyRead[T] {
+	return &LasyRead[T]{readF: ifNeedReadFunc, path: path}
 }
 
 func NewNoLasyRead[T any](content []byte) (l *LasyRead[T]) {
@@ -26,7 +26,7 @@ func NewNoLasyRead[T any](content []byte) (l *LasyRead[T]) {
 
 func (t *LasyRead[T]) Read() (read bool) {
 	if read = t.readed.CompareAndSwap(false, true); read {
-		t.buf, t.arg = t.readF(t.path, t.buf)
+		t.buf, t.arg = t.readF(t.path)
 		t.bufS = unsafe.String(unsafe.SliceData(t.Byte()), len(t.Byte()))
 	}
 	return

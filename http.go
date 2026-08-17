@@ -141,7 +141,7 @@ func StartHttpServer(cfg *Config) {
 		type stateS struct {
 			mem *runtime.MemStats
 			Sys struct {
-				MemInuse string
+				MemInuse      string
 				GCCPUFraction float64
 			}
 			Decoder pp.BufState
@@ -430,7 +430,9 @@ func StartHttpServer(cfg *Config) {
 
 			defer func(tmp []*common.FileJob) {
 				for _, v := range tmp {
-					readFilePool.Put(v.ContentP)
+					if v.ContentP != nil {
+						readFilePool.Put(v.ContentP)
+					}
 				}
 			}(results)
 

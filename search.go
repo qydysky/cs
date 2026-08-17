@@ -60,13 +60,14 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 		ErrIncludeMinified    = errors.New(`ErrIncludeMinified`)
 	)
 
-	lasyReadF := func(path string, content []byte) ([]byte, search.SearchFile) {
+	lasyReadF := func(path string) ([]byte, search.SearchFile) {
 		stats.FileCount.Add(1)
 
 		// Read file content into pooled buffer (avoids fstat + per-file alloc)
-		content, modT, enc, err := readFileContentBuf(path, content)
+		bufP, content, modT, enc, err := readFileContentBuf(path, cfg.MaxReadSizeBytes)
 		if err != nil {
 			return content, search.SearchFile{
+				BufP: bufP,
 				ModT: modT,
 				Enc:  enc,
 				Err:  err,
@@ -74,6 +75,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 		} else if len(content) == 0 {
 			err = ErrFileEmpty
 			return content, search.SearchFile{
+				BufP: bufP,
 				ModT: modT,
 				Enc:  enc,
 				Err:  err,
@@ -85,6 +87,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 			if enc == "" {
 				err = ErrIncludeBinaryFiles
 				return content, search.SearchFile{
+					BufP: bufP,
 					ModT: modT,
 					Enc:  enc,
 					Err:  err,
@@ -99,6 +102,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 			if avgLineLength > cfg.MinifiedLineByteLength {
 				err = ErrIncludeMinified
 				return content, search.SearchFile{
+					BufP: bufP,
 					ModT: modT,
 					Enc:  enc,
 					Err:  err,
@@ -108,6 +112,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 
 		stats.TextFileCount.Add(1)
 		return content, search.SearchFile{
+			BufP: bufP,
 			ModT: modT,
 			Enc:  enc,
 			Err:  err,
@@ -255,27 +260,19 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 				}
 
 				// Per-worker pooled buffer, reused across files
-				var poolBuf = readFilePool.Get()
-				fileP, e := os.Open(f.Location)
-				if e != nil {
-					readFilePool.Put(poolBuf)
-					return
-				} else if info, e := fileP.Stat(); e != nil {
-					readFilePool.Put(poolBuf)
-					return
-				} else if diff := min(info.Size(), cfg.MaxReadSizeBytes) - int64(cap(*poolBuf)); diff > 0 {
-					*poolBuf = append(*poolBuf, make([]byte, diff)...)
-				}
-				fileP.Close()
-				// defer readFilePool.Put(poolBuf)
 
 				// lasy read
-				lr := search.NewLasyRead(lasyReadF, f.Location, *poolBuf)
+				lr := search.NewLasyRead(lasyReadF, f.Location)
+				putBackBuf := func() {
+					if arg := lr.Arg(); arg.BufP != nil {
+						readFilePool.Put(arg.BufP)
+					}
+				}
 
 				// Evaluate query AST against file content
 				matched, matchLocations := search.EvaluateFile(ast, lr, f.Filename, f.Location, cfg.CaseSensitive)
 				if !matched || err != nil {
-					readFilePool.Put(poolBuf)
+					putBackBuf()
 					return
 				}
 
@@ -284,13 +281,13 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 				arg := lr.Arg()
 
 				if arg.Err != nil {
-					readFilePool.Put(poolBuf)
+					putBackBuf()
 					return
 				}
 
 				// encoder is used, new buf allocs
 				if useEncoder(arg.Enc) {
-					readFilePool.Put(poolBuf)
+					putBackBuf()
 				}
 
 				content := lr.Byte()
@@ -313,7 +310,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 
 				// Post-evaluate metadata filters (lang, complexity) now that metadata is available
 				if !search.PostEvalMetadataFilters(ast, lang, sccComplexity) {
-					readFilePool.Put(poolBuf)
+					putBackBuf()
 					return
 				}
 
@@ -322,7 +319,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 					var survived bool
 					matchLocations, survived = filterMatchLocations(matchLocations, contentByteType, cfg)
 					if !survived {
-						readFilePool.Put(poolBuf)
+						putBackBuf()
 						return
 					}
 				}
@@ -345,7 +342,7 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 						}
 					}
 					if !anySurvived {
-						readFilePool.Put(poolBuf)
+						putBackBuf()
 						return
 					}
 				}
@@ -361,14 +358,14 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 
 				select {
 				case <-ctx.Done():
-					readFilePool.Put(poolBuf)
+					putBackBuf()
 					return
 				case out <- &common.FileJob{
 					Filename:        f.Filename,
 					Extension:       gocodewalker.GetExtension(f.Filename),
 					Location:        f.Location,
 					ModTime:         arg.ModT,
-					ContentP:        poolBuf,
+					ContentP:        arg.BufP,
 					Content:         content,
 					ContentByteType: contentByteType,
 					Bytes:           len(content),
@@ -463,30 +460,35 @@ var decoderPool = pp.New(pp.PoolFunc[chardet.UniversalDetector]{
 // readFileContentBuf reads a file into buf, limiting to len(buf) bytes.
 // Returns the sub-slice of buf containing the file content.
 // Eliminates the fstat syscall by reading directly into the pre-sized buffer.
-func readFileContentBuf(location string, buf []byte) (data []byte, modT time.Time, enc string, e error) {
+func readFileContentBuf(location string, maxRead int64) (buf *[]byte, data []byte, modT time.Time, enc string, e error) {
 	f, err := os.Open(location)
 	if err != nil {
-		return nil, time.Time{}, "", err
+		return nil, nil, time.Time{}, "", err
 	}
 	defer f.Close()
 
+	buf = readFilePool.Get()
+
 	if state, e := f.Stat(); e == nil {
 		modT = state.ModTime()
+		if diff := min(state.Size(), maxRead) - int64(cap(*buf)); diff > 0 {
+			*buf = append(*buf, make([]byte, diff)...)
+		}
 	}
 
 	detector := decoderPool.Get()
 	defer decoderPool.Put(detector)
 
 	var n int
-	for tn := 0; err == nil && n < cap(buf); n += tn {
-		tn, err = f.Read(buf[n:min(n+1024, cap(buf))])
-		if detector.Feed(buf[n : n+tn]) {
+	for tn := 0; err == nil && n < cap(*buf); n += tn {
+		tn, err = f.Read((*buf)[n:min(n+1024, cap(*buf))])
+		if detector.Feed((*buf)[n : n+tn]) {
 			enc = detector.GetResult().Charset
 		}
 	}
 	if useEncoder(enc) {
 		if encoder, _ := lookup.LookupEncoding(enc); encoder != nil {
-			buf, _ = encoder.NewDecoder().Bytes(buf)
+			*buf, _ = encoder.NewDecoder().Bytes(*buf)
 		}
 	}
 	if err != nil {
@@ -494,12 +496,12 @@ func readFileContentBuf(location string, buf []byte) (data []byte, modT time.Tim
 			if n == 0 {
 				return
 			}
-			data = (buf)[:n]
+			data = (*buf)[:n]
 			return
 		}
 		return
 	}
-	data = (buf)[:n]
+	data = (*buf)[:n]
 	return
 }
 
