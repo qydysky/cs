@@ -35,8 +35,10 @@
 			flex-wrap: wrap;
 			margin-bottom: 16px;
 		}
-		input[type="text"] {
+		input[name="q"] {
 			flex: 1;
+		}
+		input[type="text"] {
 			min-width: 200px;
 			padding: 8px 12px;
 			background: #3c3c3c;
@@ -110,8 +112,8 @@
 <body>
 	<div class="container">
 		<form method="get" target="_blank" action="/">
-			<input type="text" name="q" value="" autofocus="autofocus" placeholder="Search..." />
-			<input type="submit" value="Search" />
+			<!-- <input type="text" name="q" value="" autofocus="autofocus" placeholder="Search..." /> -->
+			<input type="submit" value="New Search" />
 			<select name="ss" id="ss">
 				<option value="100">100</option>
 				<option value="200">200</option>
@@ -124,6 +126,7 @@
 				<option value="900">900</option>
 				<option value="1000">1000</option>
 			</select>
+			<input id="enc" type="text" value="{{ .Enc }}" placeholder="enc" />
 			<span class="stats">[processed in {{ .RuntimeMilliseconds }} ms]</span>
 		</form>
 
@@ -153,6 +156,12 @@
 
 			setScrollBack();
 			window.addEventListener("hashchange", setScrollBack);
+
+			document.getElementById("enc").addEventListener("change",(e)=>{
+				let urlParams = new URLSearchParams(window.location.search);
+				urlParams.set("enc", e.target.value);
+				window.location.search = urlParams.toString();
+			})
 		});
 	</script>
 </body>

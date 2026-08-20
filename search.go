@@ -286,9 +286,9 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 				}
 
 				// encoder is used, new buf allocs
-				if useEncoder(arg.Enc) {
-					putBackBuf()
-				}
+				// if useEncoder(arg.Enc) {
+				// 	putBackBuf()
+				// }
 
 				content := lr.Byte()
 
@@ -488,7 +488,8 @@ func readFileContentBuf(location string, maxRead int64) (buf *[]byte, data []byt
 	}
 	if useEncoder(enc) {
 		if encoder, _ := lookup.LookupEncoding(enc); encoder != nil {
-			*buf, _ = encoder.NewDecoder().Bytes(*buf)
+			tmp, _ := encoder.NewDecoder().Bytes((*buf)[:n])
+			n = copy(*buf, tmp)
 		}
 	}
 	if err != nil {

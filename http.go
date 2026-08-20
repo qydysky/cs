@@ -77,6 +77,7 @@ type httpSearchResult struct {
 
 type httpFileDisplay struct {
 	Location            string
+	Enc                 string
 	Content             template.HTML
 	ModTime             time.Time
 	RuntimeMilliseconds int64
@@ -254,11 +255,8 @@ func StartHttpServer(cfg *Config) {
 		}
 		defer f.Close()
 
-		detector := decoderPool.Get()
-		defer decoderPool.Put(detector)
-
 		var (
-			enc  string
+			enc  string = r.URL.Query().Get("enc")
 			modT time.Time
 		)
 
@@ -272,10 +270,15 @@ func StartHttpServer(cfg *Config) {
 			}
 		}
 
+		detector := decoderPool.Get()
+		defer decoderPool.Put(detector)
+
 		for tn, n := 0, 0; err == nil && n < cap(*buf); n += tn {
 			tn, err = f.Read((*buf)[n:min(n+1024, cap(*buf))])
-			if detector.Feed((*buf)[n : n+tn]) {
-				enc = detector.GetResult().Charset
+			if enc == "" {
+				if detector.Feed((*buf)[n : n+tn]) {
+					enc = detector.GetResult().Charset
+				}
 			}
 		}
 
@@ -313,6 +316,7 @@ func StartHttpServer(cfg *Config) {
 
 		display := httpFileDisplay{
 			Location:            path,
+			Enc:                 enc,
 			Content:             template.HTML(coloredContent),
 			RuntimeMilliseconds: makeTimestampMilli() - startTime,
 			Language:            lang,
