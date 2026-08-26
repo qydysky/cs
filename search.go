@@ -248,6 +248,20 @@ func DoSearch(ctx context.Context, cfg *Config, query string) (<-chan *common.Fi
 		// defer bufPool.Put(poolBuf)
 		// var bc = pfc.NewBlockFuncN(1)
 
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+				case <-time.After(time.Second * 10):
+					return
+				}
+
+				fmt.Println(len(fileQueue))
+			}
+		}()
+
 		for f := range fileQueue {
 			// ul := bc.Block()
 			func() {
